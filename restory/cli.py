@@ -27,6 +27,7 @@ COMMANDS: dict[str, tuple[str, str, str, str]] = {
     # System & Environment
     "doctor": ("restory.tools_manager", "doctor_main", "Setup", "Check environment, GPU, and tool readiness."),
     "install-tool": ("restory.tools_manager", "install_tool_main", "Setup", "Install or update an isolated AI tool."),
+    "install-all-tools": ("restory.tools_manager", "install_all_tools_main", "Setup", "Install all isolated AI tools at once."),
 
     # Acquisition & Cropping
     "download": ("restory.download", "download_main", "Acquire", "Download chapters from MangaDex with page verification."),

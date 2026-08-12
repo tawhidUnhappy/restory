@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from restory.isolation import get_install_root
-from restory.layout import project_memory_json
+from restory.layout import project_memory_json, normalize_chapter_name
 from restory.narration import validate_narration_json, NarrationError
 from restory.detectors.heuristic import collect_images
 from restory.audio import apply_edge_fades_and_declick, SAMPLE_RATE
@@ -61,7 +61,11 @@ class NarrationEditorHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/api/narration-data":
             ch = query.get("chapter", [self.active_item])[0]
-            ch_dir = self.project_root / ch
+            ch_norm = normalize_chapter_name(ch)
+            ch_dir = self.project_root / ch_norm
+            if not ch_dir.is_dir():
+                ch_dir = self.project_root / ch
+
             narration_file = ch_dir / "narration.json"
             panels_dir = ch_dir / "panels"
 
@@ -78,7 +82,7 @@ class NarrationEditorHandler(http.server.BaseHTTPRequestHandler):
                     entries.append({
                         "image": p.name,
                         "narration": "",
-                        "beat_id": f"ch{ch}_{p.stem}",
+                        "beat_id": f"ch{ch_dir.name}_{p.stem}",
                         "pause_after_ms": 0
                     })
                 narration_file.write_text(json.dumps(entries, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -92,14 +96,18 @@ class NarrationEditorHandler(http.server.BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
-            self._send_json({"chapter": ch, "entries": entries, "cast": cast_list})
+            self._send_json({"chapter": ch_dir.name, "entries": entries, "cast": cast_list})
             return
 
         if path.startswith("/image/panels/"):
             parts = path.strip("/").split("/")
             if len(parts) >= 4:
                 ch, filename = parts[2], parts[3]
-                img_path = self.project_root / ch / "panels" / filename
+                ch_norm = normalize_chapter_name(ch)
+                img_path = self.project_root / ch_norm / "panels" / filename
+                if not img_path.is_file():
+                    img_path = self.project_root / ch / "panels" / filename
+
                 if img_path.is_file():
                     mime, _ = mimetypes.guess_type(img_path)
                     self.send_response(200)
@@ -112,7 +120,10 @@ class NarrationEditorHandler(http.server.BaseHTTPRequestHandler):
             parts = path.strip("/").split("/")
             if len(parts) >= 4:
                 ch, stem = parts[2], parts[3]
-                wav_path = self.project_root / ch / "audio_faded" / f"{stem}.wav"
+                ch_norm = normalize_chapter_name(ch)
+                wav_path = self.project_root / ch_norm / "audio_faded" / f"{stem}.wav"
+                if not wav_path.is_file():
+                    wav_path = self.project_root / ch_norm / "audio" / f"{stem}.wav"
                 if not wav_path.is_file():
                     wav_path = self.project_root / ch / "audio" / f"{stem}.wav"
 
@@ -136,18 +147,25 @@ class NarrationEditorHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/save-narration":
             ch = data.get("chapter", self.active_item)
             entries = data.get("entries", [])
-            ch_dir = self.project_root / ch
-            narration_file = ch_dir / "narration.json"
+            ch_norm = normalize_chapter_name(ch)
+            ch_dir = self.project_root / ch_norm
+            if not ch_dir.is_dir():
+                ch_dir = self.project_root / ch
 
+            narration_file = ch_dir / "narration.json"
             narration_file.write_text(json.dumps(entries, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            self._send_json({"status": "ok", "chapter": ch})
+            self._send_json({"status": "ok", "chapter": ch_dir.name})
             return
 
         if path == "/api/preview-tts":
             ch = data.get("chapter", self.active_item)
             stem = data.get("stem", "preview")
 
-            ch_dir = self.project_root / ch
+            ch_norm = normalize_chapter_name(ch)
+            ch_dir = self.project_root / ch_norm
+            if not ch_dir.is_dir():
+                ch_dir = self.project_root / ch
+
             audio_dir = ch_dir / "audio"
             faded_dir = ch_dir / "audio_faded"
             audio_dir.mkdir(parents=True, exist_ok=True)
@@ -163,12 +181,16 @@ class NarrationEditorHandler(http.server.BaseHTTPRequestHandler):
             faded_wav.write_bytes(out_wav.read_bytes())
             apply_edge_fades_and_declick(faded_wav, fade_ms=8.0)
 
-            self._send_json({"status": "ok", "audio_url": f"/audio/preview/{ch}/{stem}"})
+            self._send_json({"status": "ok", "audio_url": f"/audio/preview/{ch_dir.name}/{stem}"})
             return
 
         if path == "/api/narration-check":
             ch = data.get("chapter", self.active_item)
-            ch_dir = self.project_root / ch
+            ch_norm = normalize_chapter_name(ch)
+            ch_dir = self.project_root / ch_norm
+            if not ch_dir.is_dir():
+                ch_dir = self.project_root / ch
+
             try:
                 validate_narration_json(ch_dir, require_panels=True)
                 self._send_json({"ok": True})
@@ -192,7 +214,7 @@ class NarrationEditorHandler(http.server.BaseHTTPRequestHandler):
 
 def run_narration_server(project_root: Path, item: str = "01", port: int = 8001, open_browser: bool = True) -> int:
     NarrationEditorHandler.project_root = project_root
-    NarrationEditorHandler.active_item = item
+    NarrationEditorHandler.active_item = normalize_chapter_name(item)
 
     server_address = ("", port)
     httpd = http.server.HTTPServer(server_address, NarrationEditorHandler)

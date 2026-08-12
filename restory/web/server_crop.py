@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlparse
 from PIL import Image
 
 from restory.isolation import get_install_root
-from restory.layout import project_dir, project_manga_json
+from restory.layout import project_dir, project_manga_json, normalize_chapter_name
 from restory.tools_manager import check_gpu
 from restory.detectors import (
     collect_images,
@@ -82,21 +82,29 @@ class CropEditorHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/api/page-data":
             ch = query.get("chapter", [self.active_item])[0]
-            ch_dir = self.project_root / ch
+            ch_norm = normalize_chapter_name(ch)
+            ch_dir = self.project_root / ch_norm
+            if not ch_dir.is_dir():
+                ch_dir = self.project_root / ch
+
             download_dir = ch_dir / "download"
 
             pages = collect_images(download_dir)
             pages_list = [{"filename": p.name, "stem": p.stem} for p in pages]
             boxes_data = load_chapter_boxes(ch_dir)
 
-            self._send_json({"chapter": ch, "pages": pages_list, "boxes": boxes_data})
+            self._send_json({"chapter": ch_dir.name, "pages": pages_list, "boxes": boxes_data})
             return
 
         if path.startswith("/image/download/"):
             parts = path.strip("/").split("/")
             if len(parts) >= 4:
                 ch, filename = parts[2], parts[3]
-                img_path = self.project_root / ch / "download" / filename
+                ch_norm = normalize_chapter_name(ch)
+                img_path = self.project_root / ch_norm / "download" / filename
+                if not img_path.is_file():
+                    img_path = self.project_root / ch / "download" / filename
+
                 if img_path.is_file():
                     mime, _ = mimetypes.guess_type(img_path)
                     self.send_response(200)
@@ -120,7 +128,11 @@ class CropEditorHandler(http.server.BaseHTTPRequestHandler):
             filename = data.get("filename")
             engine = data.get("engine", "heuristic")
 
-            img_path = self.project_root / ch / "download" / filename
+            ch_norm = normalize_chapter_name(ch)
+            img_path = self.project_root / ch_norm / "download" / filename
+            if not img_path.is_file():
+                img_path = self.project_root / ch / "download" / filename
+
             if not img_path.is_file():
                 self.send_error(404, "Image file not found")
                 return
@@ -148,9 +160,13 @@ class CropEditorHandler(http.server.BaseHTTPRequestHandler):
             boxes = data.get("boxes", {})
             rtl = bool(data.get("rtl", True))
 
-            ch_dir = self.project_root / ch
+            ch_norm = normalize_chapter_name(ch)
+            ch_dir = self.project_root / ch_norm
+            if not ch_dir.is_dir():
+                ch_dir = self.project_root / ch
+
             recrop_chapter_from_boxes(ch_dir, boxes, rtl=rtl)
-            self._send_json({"status": "ok", "chapter": ch})
+            self._send_json({"status": "ok", "chapter": ch_dir.name})
             return
 
         if path == "/api/shutdown":
@@ -169,7 +185,7 @@ class CropEditorHandler(http.server.BaseHTTPRequestHandler):
 
 def run_crop_server(project_root: Path, item: str = "01", port: int = 8000, open_browser: bool = True) -> int:
     CropEditorHandler.project_root = project_root
-    CropEditorHandler.active_item = item
+    CropEditorHandler.active_item = normalize_chapter_name(item)
 
     server_address = ("", port)
     httpd = http.server.HTTPServer(server_address, CropEditorHandler)

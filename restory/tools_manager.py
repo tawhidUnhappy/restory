@@ -13,6 +13,8 @@ from restory import __version__, __product_name__
 from restory.isolation import get_install_root, tool_subprocess_env
 from restory.layout import tools_root, tool_dir
 
+ALL_TOOLS = ["index-tts", "magi-v3", "deepseek-ocr2", "kokoro-82m", "whisper-turbo"]
+
 
 def check_gpu() -> dict[str, str | bool]:
     has_cuda = False
@@ -47,7 +49,7 @@ def doctor_main(argv: list[str] | None = None) -> int:
     }
 
     tools_status = {}
-    for name in ("index-tts", "magi-v3", "deepseek-ocr2", "kokoro-82m", "whisper-turbo"):
+    for name in ALL_TOOLS:
         t_path = tool_dir(name)
         ready_file = t_path / "READY.json"
         tools_status[name] = {
@@ -82,10 +84,34 @@ def doctor_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def install_all_tools_main(argv: list[str] | None = None) -> int:
+    """Install all isolated AI tools in sequence."""
+    print("============================================================")
+    print(" Provisioning ALL Isolated AI Tools")
+    print("============================================================")
+    success_count = 0
+    for name in ALL_TOOLS:
+        print(f"\n---> [{success_count + 1}/{len(ALL_TOOLS)}] Provisioning '{name}'...")
+        try:
+            res = install_tool_main([name])
+            if res == 0:
+                success_count += 1
+        except Exception as exc:
+            print(f"[WARN] Failed to install '{name}': {exc}", file=sys.stderr)
+
+    print(f"\n============================================================")
+    print(f" Provisioning complete: {success_count}/{len(ALL_TOOLS)} tools ready.")
+    print(f"============================================================")
+    return 0 if success_count > 0 else 1
+
+
 def install_tool_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="restory install-tool")
-    parser.add_argument("name", choices=["index-tts", "magi-v3", "deepseek-ocr2", "kokoro-82m", "whisper-turbo"])
+    parser.add_argument("name", choices=ALL_TOOLS + ["all"])
     args = parser.parse_args(argv)
+
+    if args.name == "all":
+        return install_all_tools_main()
 
     t_dir = tool_dir(args.name)
     t_dir.mkdir(parents=True, exist_ok=True)
@@ -100,6 +126,13 @@ def install_tool_main(argv: list[str] | None = None) -> int:
         pyproject = (
             "[project]\nname = 'magi-v3-env'\nversion = '0.1.0'\nrequires-python = '>=3.11'\n"
             "dependencies = ['torch', 'torchvision', 'transformers==4.48.3', 'einops', 'timm', 'pillow', 'numpy']\n"
+        )
+        (t_dir / "pyproject.toml").write_text(pyproject, encoding="utf-8")
+        subprocess.run([uv_bin, "sync", "--python", "3.12"], cwd=t_dir, env=env, check=True)
+    elif args.name == "whisper-turbo":
+        pyproject = (
+            "[project]\nname = 'whisper-turbo-env'\nversion = '0.1.0'\nrequires-python = '>=3.11'\n"
+            "dependencies = ['faster-whisper', 'torch']\n"
         )
         (t_dir / "pyproject.toml").write_text(pyproject, encoding="utf-8")
         subprocess.run([uv_bin, "sync", "--python", "3.12"], cwd=t_dir, env=env, check=True)

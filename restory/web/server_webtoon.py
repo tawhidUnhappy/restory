@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 from PIL import Image
 
 from restory.isolation import get_install_root
+from restory.layout import normalize_chapter_name
 from restory.tools_manager import check_gpu
 from restory.detectors.webtoon import detect_webtoon, collect_images
 from restory.panels import load_chapter_boxes, save_chapter_boxes
@@ -58,7 +59,11 @@ class WebtoonEditorHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/api/webtoon-data":
             ch = query.get("chapter", [self.active_item])[0]
-            ch_dir = self.project_root / ch
+            ch_norm = normalize_chapter_name(ch)
+            ch_dir = self.project_root / ch_norm
+            if not ch_dir.is_dir():
+                ch_dir = self.project_root / ch
+
             download_dir = ch_dir / "download"
 
             pages = collect_images(download_dir)
@@ -69,14 +74,18 @@ class WebtoonEditorHandler(http.server.BaseHTTPRequestHandler):
                 boxes_data = detect_webtoon(ch_dir)
                 save_chapter_boxes(ch_dir, boxes_data)
 
-            self._send_json({"chapter": ch, "pages": pages_list, "webtoon_data": boxes_data})
+            self._send_json({"chapter": ch_dir.name, "pages": pages_list, "webtoon_data": boxes_data})
             return
 
         if path.startswith("/image/download/"):
             parts = path.strip("/").split("/")
             if len(parts) >= 4:
                 ch, filename = parts[2], parts[3]
-                img_path = self.project_root / ch / "download" / filename
+                ch_norm = normalize_chapter_name(ch)
+                img_path = self.project_root / ch_norm / "download" / filename
+                if not img_path.is_file():
+                    img_path = self.project_root / ch / "download" / filename
+
                 if img_path.is_file():
                     mime, _ = mimetypes.guess_type(img_path)
                     self.send_response(200)
@@ -99,7 +108,11 @@ class WebtoonEditorHandler(http.server.BaseHTTPRequestHandler):
             ch = data.get("chapter", self.active_item)
             webtoon_data = data.get("webtoon_data", {})
 
-            ch_dir = self.project_root / ch
+            ch_norm = normalize_chapter_name(ch)
+            ch_dir = self.project_root / ch_norm
+            if not ch_dir.is_dir():
+                ch_dir = self.project_root / ch
+
             save_chapter_boxes(ch_dir, webtoon_data)
 
             # Crop physical webtoon panels
@@ -128,10 +141,10 @@ class WebtoonEditorHandler(http.server.BaseHTTPRequestHandler):
                     if bot - top < 100:
                         continue
                     crop = combined.crop((0, top, canvas_w, bot))
-                    crop.save(panels_dir / f"ch{ch}_{valid_idx:03d}.jpg", "JPEG", quality=95)
+                    crop.save(panels_dir / f"ch{ch_dir.name}_{valid_idx:03d}.jpg", "JPEG", quality=95)
                     valid_idx += 1
 
-            self._send_json({"status": "ok", "chapter": ch})
+            self._send_json({"status": "ok", "chapter": ch_dir.name})
             return
 
         if path == "/api/shutdown":
@@ -150,7 +163,7 @@ class WebtoonEditorHandler(http.server.BaseHTTPRequestHandler):
 
 def run_webtoon_server(project_root: Path, item: str = "01", port: int = 8002, open_browser: bool = True) -> int:
     WebtoonEditorHandler.project_root = project_root
-    WebtoonEditorHandler.active_item = item
+    WebtoonEditorHandler.active_item = normalize_chapter_name(item)
 
     server_address = ("", port)
     httpd = http.server.HTTPServer(server_address, WebtoonEditorHandler)
