@@ -7,6 +7,7 @@
 /data/library/
 
 # --- Isolated Runtime Machinery, Model Caches & Vendor Binaries ---
+runtime/
 /runtime/cache/
 /runtime/tools/_vendor/
 /runtime/tools/*/.venv/
