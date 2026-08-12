@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Side-by-Side Narration Script Editor — restory</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/narration_editor.css">
+</head>
+<body>
+    <header>
+        <div class="header-title">restory Narration Editor</div>
+
+        <div class="controls-group">
+            <label for="chapter-select">Chapter:</label>
+            <select id="chapter-select" onchange="switchChapter(this.value)"></select>
+            <span class="telemetry-badge" id="stats-counter">0 / 0 Narrated</span>
+        </div>
+
+        <div class="controls-group">
+            <button onclick="runNarrationCheck()">Validate Contract</button>
+            <button class="btn-accent" onclick="saveNarration()">Save Script (Ctrl+S)</button>
+            <button class="btn-success" onclick="finishAndContinue()">Done & Continue Pipeline &rarr;</button>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <div class="editor-scroll" id="card-list"></div>
+    </div>
+
+    <div id="toast">Saved narration.json!</div>
+
+    <script src="/static/js/telemetry.js"></script>
+    <script src="/static/js/narration_editor.js"></script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+.webtoon-main {
+    display: flex;
+    flex: 1;
+    height: calc(100vh - 55px);
+    overflow: hidden;
+}
+
+.webtoon-viewport {
+    flex: 1;
+    background-color: #050505;
+    overflow-y: auto;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    padding: 20px 0;
+}
+
+.strip-canvas-wrapper {
+    position: relative;
+    background-color: #000;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.9);
+}
+
+.cut-line-marker {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background-color: var(--accent);
+    cursor: ns-resize;
+    z-index: 20;
+    transition: background-color 0.2s ease;
+}
+
+.cut-line-marker:hover {
+    background-color: var(--success);
+    height: 6px;
+}
+
+.cut-handle {
+    position: absolute;
+    right: -120px;
+    top: -12px;
+    background-color: #1e293b;
+    border: 1px solid var(--border);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.minimap-bar {
+    width: 60px;
+    background-color: #0f172a;
+    border-right: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+}
+
+.minimap-cut {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background-color: var(--accent);
+}

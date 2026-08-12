@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webtoon Strip Editor — restory</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/webtoon_editor.css">
+</head>
+<body>
+    <header>
+        <div class="header-title">
+            <span>restory Webtoon Editor</span>
+            <div class="telemetry-badge" id="telemetry-banner">
+                <span class="status-dot"></span>
+                <span id="telemetry-gpu">GPU: Loading...</span>
+            </div>
+        </div>
+
+        <div class="controls-group">
+            <label for="chapter-select">Chapter:</label>
+            <select id="chapter-select" onchange="switchChapter(this.value)"></select>
+            <span id="cuts-counter" style="font-size:0.85rem; color:var(--text-muted);">0 Panels</span>
+        </div>
+
+        <div class="controls-group">
+            <button onclick="addCutAtCenter()">+ Add Horizontal Cut (S)</button>
+            <button class="btn-accent" onclick="saveWebtoon()">Save & Crop Panels (Ctrl+S)</button>
+            <button class="btn-success" onclick="finishAndContinue()">Done & Continue Pipeline &rarr;</button>
+        </div>
+    </header>
+
+    <div class="webtoon-main">
+        <div class="minimap-bar" id="minimap-bar"></div>
+
+        <div class="webtoon-viewport" id="viewport">
+            <div class="strip-canvas-wrapper" id="canvas-container"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="card">
+                <div class="card-title">Panel Motion Controls</div>
+                <div id="panel-details" style="font-size:0.82rem; color:var(--text-muted);">
+                    Select a cut line to edit camera motion properties.
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Shortcuts</div>
+                <div class="hotkey-list">
+                    <p><kbd>S</kbd> : Add Horizontal Cut Line</p>
+                    <p><kbd>Del</kbd> : Delete Selected Cut Line</p>
+                    <p><kbd>Ctrl+S</kbd> : Save & Crop Webtoon</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast">Webtoon Panels Cropped!</div>
+
+    <script src="/static/js/telemetry.js"></script>
+    <script src="/static/js/virtual_scroll.js"></script>
+    <script src="/static/js/webtoon_editor.js"></script>
+</body>
+</html>

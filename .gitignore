@@ -1,0 +1,51 @@
+# ==============================================================================
+# restory Git Ignore Rules
+# ==============================================================================
+
+# --- Deletable Production Workspace Data ---
+/data/
+/data/library/
+
+# --- Isolated Runtime Machinery, Model Caches & Vendor Binaries ---
+/runtime/cache/
+/runtime/tools/_vendor/
+/runtime/tools/*/.venv/
+/runtime/tools/*/READY.json
+/runtime/tools/*/_*.py
+
+# --- Python Virtual Environment & Build Artifacts ---
+/.venv/
+/venv/
+/env/
+/build/
+/dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- System Config Overrides (Track example config only) ---
+config.system.json
+!config.system.example.json
+
+# --- Media Derivatives & Temporary Render Artifacts ---
+*.mp4
+*.wav
+*.wav.json
+*.ass
+*.srt
+*.zip
+*.log
+
+# --- IDE & Operating System Junk ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

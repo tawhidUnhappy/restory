@@ -1,0 +1,29 @@
+{
+  "tts": {
+    "engine": "auto",
+    "speaker_wav": null
+  },
+  "bgm": {
+    "file": null,
+    "volume_db": -28.0
+  },
+  "download_defaults": {
+    "translated_language": "en",
+    "download_delay": 0.5
+  },
+  "manga_video": {
+    "audio_source": "faded",
+    "audio_fade_ms": 8.0,
+    "video_fps": 30,
+    "video_preset": "medium",
+    "audio_bitrate": "192k"
+  },
+  "cut_page": {
+    "reading_direction": "rtl"
+  },
+  "paths": {
+    "library_subdir": "library",
+    "panels_subdir": "panels",
+    "audio_subdir": "audio"
+  }
+}
