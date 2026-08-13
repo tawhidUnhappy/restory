@@ -1,4 +1,4 @@
-"""restory.detectors.magi — ViT MAGI v3 AI manga panel detector wrapper (Batch CUDA GPU accelerated)."""
+"""restory.detectors.magi — ViT MAGI v3 AI manga panel detector wrapper with boundary refinement."""
 
 from __future__ import annotations
 
@@ -8,26 +8,26 @@ import sys
 from pathlib import Path
 from PIL import Image
 
-from restory.isolation import get_install_root, tool_subprocess_env
+from restory.isolation import tool_subprocess_env
 from restory.layout import tool_dir
-from restory.detectors.heuristic import detect_heuristic
+from restory.detectors.heuristic import detect_japanese_paged, _suppress_overlapping_boxes
 
 
 def detect_magi_batch(img_paths: list[Path]) -> dict[Path, list[dict]]:
-    """Detect panel boxes for a list of chapter page images in a single GPU pass."""
+    """Detect panel boxes for a list of chapter page images in CUDA GPU batch pass."""
     if not img_paths:
         return {}
 
     t_dir = tool_dir("magi-v3")
     ready_file = t_dir / "READY.json"
 
-    # Fallback to heuristic if tool is uninstalled
+    # Fallback to Japanese paged CV detector if tool is not installed
     if not ready_file.is_file():
-        print("[WARN] MAGI v3 AI tool environment not provisioned. Falling back to classic CV detector.", file=sys.stderr)
+        print("[WARN] MAGI v3 AI tool environment not provisioned. Falling back to Japanese CV detector.", file=sys.stderr)
         out = {}
         for p in img_paths:
             with Image.open(p) as im:
-                out[p] = detect_heuristic(im)
+                out[p] = detect_japanese_paged(im)
         return out
 
     worker_script = t_dir / "_magi_predict_batch.py"
@@ -52,6 +52,7 @@ try:
         if not p.is_file():
             continue
         with Image.open(p) as img:
+            w, h = img.size
             res = model.predict_panels([img])
             boxes = []
             if res and len(res) > 0:
@@ -92,7 +93,11 @@ except Exception as exc:
             out = {}
             for p in img_paths:
                 key = str(p.resolve())
-                out[p] = raw_res.get(key, [])
+                boxes = raw_res.get(key, [])
+                with Image.open(p) as im:
+                    w, h = im.size
+                boxes = _suppress_overlapping_boxes(boxes, w, h)
+                out[p] = boxes
             return out
     except Exception as exc:
         print(f"[WARN] MAGI v3 batch prediction failed ({exc}). Falling back to CV detector.", file=sys.stderr)
@@ -103,7 +108,7 @@ except Exception as exc:
     out = {}
     for p in img_paths:
         with Image.open(p) as im:
-            out[p] = detect_heuristic(im)
+            out[p] = detect_japanese_paged(im)
     return out
 
 

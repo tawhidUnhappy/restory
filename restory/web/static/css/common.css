@@ -1,17 +1,20 @@
+/* restory — Notion-style Minimalist Monochrome Palette */
 :root {
-    --bg-dark: #090d16;
-    --panel-bg: #131927;
-    --card-bg: #0d121f;
-    --accent: #38bdf8;
-    --accent-hover: #0284c7;
+    --bg-dark: #09090b;
+    --panel-bg: #121215;
+    --card-bg: #18181b;
+    --card-hover: #27272a;
+    --text-primary: #f4f4f5;
+    --text-muted: #a1a1aa;
+    --text-dim: #71717a;
+    --border: #27272a;
+    --border-highlight: #3f3f46;
+    --accent: #ffffff;
+    --accent-inverse: #09090b;
+    --guide-line: #38bdf8;
     --success: #22c55e;
-    --danger: #ef4444;
     --warning: #f59e0b;
-    --purple: #a855f7;
-    --text-light: #f8fafc;
-    --text-muted: #94a3b8;
-    --border: #1e293b;
-    --border-highlight: #334155;
+    --danger: #ef4444;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -19,35 +22,42 @@
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background-color: var(--bg-dark);
-    color: var(--text-light);
+    color: var(--text-primary);
     height: 100vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    -webkit-font-smoothing: antialiased;
 }
 
 header {
     background-color: var(--panel-bg);
     border-bottom: 1px solid var(--border);
-    padding: 10px 20px;
+    padding: 10px 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 15px;
-    z-index: 10;
+    gap: 16px;
+    z-index: 20;
 }
 
 .header-title {
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: var(--text-light);
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 10px;
 }
 
-.header-title .brand-accent {
-    color: var(--accent);
+.header-title .brand-tag {
+    background-color: var(--border);
+    color: var(--text-muted);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
 }
 
 .controls-group {
@@ -57,60 +67,64 @@ header {
 }
 
 button, select {
-    background-color: #1e293b;
-    color: var(--text-light);
-    border: 1px solid var(--border-highlight);
+    background-color: var(--card-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
     padding: 6px 14px;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     font-weight: 500;
     transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 button:hover, select:hover {
-    background-color: #334155;
-    border-color: #475569;
+    background-color: var(--card-hover);
+    border-color: var(--border-highlight);
 }
 
 button.btn-accent {
     background-color: var(--accent);
-    color: #090d16;
+    color: var(--accent-inverse);
     border: none;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 button.btn-accent:hover {
-    background-color: var(--accent-hover);
+    background-color: #e4e4e7;
 }
 
 button.btn-success {
-    background-color: var(--success);
-    color: #090d16;
-    border: none;
-    font-weight: 700;
+    background-color: #166534;
+    color: #f0fdf4;
+    border: 1px solid #22c55e;
+    font-weight: 600;
 }
 
 button.btn-success:hover {
-    background-color: #16a34a;
+    background-color: #15803d;
 }
 
-button.btn-danger {
-    background-color: var(--danger);
-    color: #fff;
-    border: none;
+button.btn-ocr {
+    background-color: #1e1b4b;
+    color: #c7d2fe;
+    border: 1px solid #4338ca;
+    font-weight: 600;
 }
 
-button.btn-danger:hover {
-    background-color: #dc2626;
+button.btn-ocr:hover {
+    background-color: #312e81;
 }
 
 .telemetry-badge {
-    background-color: #0d121f;
+    background-color: var(--card-bg);
     border: 1px solid var(--border);
     padding: 4px 10px;
     border-radius: 6px;
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
     display: flex;
     align-items: center;
@@ -118,20 +132,20 @@ button.btn-danger:hover {
 }
 
 .telemetry-badge .status-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background-color: var(--success);
 }
 
 .sidebar {
-    width: 310px;
+    width: 320px;
     background-color: var(--panel-bg);
     border-left: 1px solid var(--border);
-    padding: 15px;
+    padding: 16px;
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 16px;
     overflow-y: auto;
 }
 
@@ -139,29 +153,29 @@ button.btn-danger:hover {
     background-color: var(--card-bg);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 12px;
+    padding: 14px;
 }
 
 .card-title {
-    font-size: 0.8rem;
-    font-weight: 700;
+    font-size: 0.75rem;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--text-muted);
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
-/* Modal Overlay & Progress Styles */
+/* Modal Overlay & Live Progress Bar */
 .modal-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    background-color: rgba(9, 13, 22, 0.82);
+    background-color: rgba(9, 9, 11, 0.85);
     backdrop-filter: blur(8px);
     display: flex;
     justify-content: center;
@@ -169,7 +183,7 @@ button.btn-danger:hover {
     z-index: 200;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.25s ease;
+    transition: opacity 0.2s ease;
 }
 
 .modal-overlay.active {
@@ -180,19 +194,19 @@ button.btn-danger:hover {
 .modal-card {
     background-color: var(--panel-bg);
     border: 1px solid var(--border-highlight);
-    border-radius: 12px;
-    padding: 24px 30px;
-    width: 480px;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+    border-radius: 10px;
+    padding: 24px;
+    width: 440px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9);
     display: flex;
     flex-direction: column;
     gap: 16px;
 }
 
 .modal-header {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--text-light);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -200,11 +214,11 @@ button.btn-danger:hover {
 
 .progress-track {
     width: 100%;
-    height: 10px;
-    background-color: #0d121f;
-    border: 1px solid var(--border);
-    border-radius: 5px;
+    height: 6px;
+    background-color: var(--card-bg);
+    border-radius: 3px;
     overflow: hidden;
+    border: 1px solid var(--border);
 }
 
 .progress-bar {
@@ -215,7 +229,7 @@ button.btn-danger:hover {
 }
 
 .progress-status {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     color: var(--text-muted);
 }
 
@@ -223,15 +237,15 @@ button.btn-danger:hover {
     position: fixed;
     bottom: 24px;
     right: 24px;
-    background-color: var(--success);
-    color: #090d16;
-    padding: 10px 20px;
+    background-color: var(--accent);
+    color: var(--accent-inverse);
+    padding: 10px 18px;
     border-radius: 6px;
-    font-weight: 700;
-    font-size: 0.88rem;
+    font-weight: 600;
+    font-size: 0.85rem;
     opacity: 0;
-    transition: opacity 0.25s ease;
+    transition: opacity 0.2s ease;
     pointer-events: none;
     z-index: 100;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
 }

@@ -1,61 +1,62 @@
+/* Notion-Style Webtoon Infinite Scroll Viewport */
 .webtoon-main {
     display: flex;
     flex: 1;
-    height: calc(100vh - 55px);
+    height: calc(100vh - 53px);
     overflow: hidden;
 }
 
 .webtoon-viewport {
     flex: 1;
-    background-color: #050505;
+    background-color: #000000;
     overflow-y: auto;
     position: relative;
     display: flex;
     justify-content: center;
-    padding: 20px 0;
+    padding: 24px 0;
 }
 
 .strip-canvas-wrapper {
     position: relative;
     background-color: #000;
-    box-shadow: 0 0 30px rgba(0, 0, 0, 0.9);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.95);
 }
 
 .cut-line-marker {
     position: absolute;
     left: 0;
     width: 100%;
-    height: 4px;
+    height: 3px;
     background-color: var(--accent);
     cursor: ns-resize;
     z-index: 20;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.15s ease;
 }
 
 .cut-line-marker:hover {
     background-color: var(--success);
-    height: 6px;
+    height: 5px;
 }
 
 .cut-handle {
     position: absolute;
-    right: -120px;
+    right: -130px;
     top: -12px;
-    background-color: #1e293b;
+    background-color: var(--panel-bg);
     border: 1px solid var(--border);
-    color: #fff;
+    color: var(--text-primary);
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     display: flex;
     gap: 6px;
     align-items: center;
 }
 
 .minimap-bar {
-    width: 60px;
-    background-color: #0f172a;
+    width: 50px;
+    background-color: var(--panel-bg);
     border-right: 1px solid var(--border);
     position: relative;
     overflow: hidden;

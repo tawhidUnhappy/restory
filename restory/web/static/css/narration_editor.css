@@ -1,3 +1,4 @@
+/* Notion-Style Side-by-Side Narration Script Editor with DeepSeek-OCR 2 */
 .editor-scroll {
     flex: 1;
     overflow-y: auto;
@@ -11,27 +12,27 @@
 .entry-card {
     background-color: var(--panel-bg);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 8px;
     display: flex;
     gap: 20px;
     padding: 18px;
     align-items: flex-start;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .entry-card:focus-within {
-    border-color: var(--accent);
-    box-shadow: 0 0 15px rgba(56, 189, 248, 0.15);
+    border-color: var(--border-highlight);
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.05);
 }
 
 .entry-card.blank-entry {
-    opacity: 0.8;
+    opacity: 0.75;
     border-style: dashed;
 }
 
 .image-container {
-    width: 260px;
-    min-width: 260px;
+    width: 250px;
+    min-width: 250px;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -39,7 +40,7 @@
 
 .panel-preview {
     width: 100%;
-    max-height: 360px;
+    max-height: 350px;
     object-fit: contain;
     border-radius: 6px;
     background-color: #000;
@@ -60,29 +61,51 @@
 }
 
 .panel-label {
-    font-size: 0.9rem;
-    font-weight: 700;
-    color: var(--text-light);
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
 }
 
 textarea {
     width: 100%;
-    height: 110px;
+    height: 100px;
     background-color: var(--card-bg);
-    color: var(--text-light);
+    color: var(--text-primary);
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 12px;
     font-family: inherit;
-    font-size: 0.95rem;
-    line-height: 1.55;
+    font-size: 0.92rem;
+    line-height: 1.5;
     resize: vertical;
     transition: border-color 0.15s ease;
 }
 
 textarea:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--text-muted);
+}
+
+.ocr-box {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ocr-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
 }
 
 .meta-row {
@@ -95,36 +118,35 @@ textarea:focus {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     color: var(--text-muted);
 }
 
 .field-group input {
     background-color: var(--card-bg);
-    color: #fff;
+    color: var(--text-primary);
     border: 1px solid var(--border);
-    padding: 5px 8px;
+    padding: 4px 8px;
     border-radius: 4px;
-    font-size: 0.82rem;
-    width: 150px;
+    font-size: 0.8rem;
+    width: 130px;
 }
 
 .status-tag {
-    font-size: 0.75rem;
-    padding: 3px 9px;
+    font-size: 0.72rem;
+    padding: 2px 8px;
     border-radius: 4px;
     font-weight: 600;
-    letter-spacing: 0.03em;
 }
 
 .tag-ok {
-    background-color: rgba(34, 197, 94, 0.15);
+    background-color: rgba(34, 197, 94, 0.12);
     color: var(--success);
-    border: 1px solid rgba(34, 197, 94, 0.3);
+    border: 1px solid rgba(34, 197, 94, 0.25);
 }
 
 .tag-blank {
-    background-color: rgba(148, 163, 184, 0.15);
+    background-color: rgba(161, 161, 170, 0.12);
     color: var(--text-muted);
-    border: 1px solid rgba(148, 163, 184, 0.2);
+    border: 1px solid rgba(161, 161, 170, 0.2);
 }

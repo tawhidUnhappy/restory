@@ -19,7 +19,7 @@ def collect_images(folder: Path) -> list[Path]:
 
 
 def detect_webtoon(ch_dir: Path) -> dict:
-    """Stitch download images into vertical canvas strip and detect horizontal gutter cuts."""
+    """Stitch download page images into vertical canvas strip and detect horizontal gutter cuts."""
     download_dir = ch_dir / "download"
     pages = collect_images(download_dir)
     if not pages:

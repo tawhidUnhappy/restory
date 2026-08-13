@@ -1,4 +1,4 @@
-"""restory.web_crop_editor — Launcher for Paged Manga Crop & Layer WebUI Editor."""
+"""restory.web_crop_editor — Launcher for Paged Manga Crop & Canva Layer WebUI Editor."""
 
 from __future__ import annotations
 

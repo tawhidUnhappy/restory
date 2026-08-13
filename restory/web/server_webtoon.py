@@ -115,7 +115,7 @@ class WebtoonEditorHandler(http.server.BaseHTTPRequestHandler):
 
             save_chapter_boxes(ch_dir, webtoon_data)
 
-            # Crop physical webtoon panels
+            # Crop physical webtoon strip panels
             download_dir = ch_dir / "download"
             panels_dir = ch_dir / "panels"
             panels_dir.mkdir(parents=True, exist_ok=True)

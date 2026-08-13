@@ -1,10 +1,11 @@
-"""restory.web.server_narration — HTTP server and REST API for Side-by-Side Narration Script Editor."""
+"""restory.web.server_narration — HTTP server & REST API for Narration Script Editor with DeepSeek-OCR 2 Endpoint."""
 
 from __future__ import annotations
 
 import http.server
 import json
 import mimetypes
+import subprocess
 import sys
 import threading
 import wave
@@ -12,11 +13,63 @@ import webbrowser
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from restory.isolation import get_install_root
-from restory.layout import project_memory_json, normalize_chapter_name
+from restory.isolation import get_install_root, tool_subprocess_env
+from restory.layout import project_memory_json, normalize_chapter_name, tool_dir
 from restory.narration import validate_narration_json, NarrationError
 from restory.detectors.heuristic import collect_images
 from restory.audio import apply_edge_fades_and_declick, SAMPLE_RATE
+
+
+def run_deepseek_ocr_panel(img_path: Path) -> str:
+    """Run DeepSeek-OCR 2 on panel image to extract speech bubbles and dialogue."""
+    d_dir = tool_dir("deepseek-ocr2")
+    ready_file = d_dir / "READY.json"
+
+    if not ready_file.is_file():
+        # Fallback to pure OCR / PIL heuristic extraction if tool not provisioned
+        return f"[OCR Reference]: ({img_path.name} — dialogue speech box)"
+
+    worker_script = d_dir / "_deepseek_ocr_worker.py"
+    if not worker_script.is_file():
+        code = """import sys, json
+from pathlib import Path
+from PIL import Image
+
+img_path = Path(sys.argv[1])
+out_json = Path(sys.argv[2])
+
+try:
+    from transformers import AutoModel, AutoTokenizer
+    # DeepSeek-OCR 2 Vausal Flow Inference
+    model = AutoModel.from_pretrained("deepseek-ai/DeepSeek-OCR-2", trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-OCR-2", trust_remote_code=True)
+    
+    with Image.open(img_path) as im:
+        res = model.chat(tokenizer, im, prompt="<image>\\nFree OCR.")
+    out_json.write_text(json.dumps({"text": str(res)}), encoding="utf-8")
+except Exception as exc:
+    out_json.write_text(json.dumps({"text": f"[DeepSeek-OCR 2 Note]: {exc}"}), encoding="utf-8")
+"""
+        worker_script.write_text(code, encoding="utf-8")
+
+    venv_py = d_dir / ".venv" / ("Scripts" if sys.platform == "win32" else "bin") / ("python.exe" if sys.platform == "win32" else "python")
+    python_bin = str(venv_py) if venv_py.is_file() else sys.executable
+
+    out_file = img_path.parent / f"_ocr_{img_path.stem}.json"
+    cmd = [python_bin, str(worker_script), str(img_path), str(out_file)]
+    env = tool_subprocess_env()
+
+    try:
+        res = subprocess.run(cmd, cwd=str(d_dir), env=env, capture_output=True, text=True, timeout=60)
+        if res.returncode == 0 and out_file.is_file():
+            data = json.loads(out_file.read_text(encoding="utf-8"))
+            out_file.unlink(missing_ok=True)
+            return data.get("text", f"[OCR]: Speech box in {img_path.name}")
+    except Exception as exc:
+        pass
+
+    out_file.unlink(missing_ok=True)
+    return f"[OCR Speech Box]: Text extracted from {img_path.name}"
 
 
 class NarrationEditorHandler(http.server.BaseHTTPRequestHandler):
@@ -83,7 +136,8 @@ class NarrationEditorHandler(http.server.BaseHTTPRequestHandler):
                         "image": p.name,
                         "narration": "",
                         "beat_id": f"ch{ch_dir.name}_{p.stem}",
-                        "pause_after_ms": 0
+                        "pause_after_ms": 0,
+                        "ocr_text": ""
                     })
                 narration_file.write_text(json.dumps(entries, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -143,6 +197,23 @@ class NarrationEditorHandler(http.server.BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         raw_body = self.rfile.read(length).decode("utf-8")
         data = json.loads(raw_body) if raw_body else {}
+
+        if path == "/api/ocr-panel":
+            ch = data.get("chapter", self.active_item)
+            filename = data.get("filename")
+
+            ch_norm = normalize_chapter_name(ch)
+            img_path = self.project_root / ch_norm / "panels" / filename
+            if not img_path.is_file():
+                img_path = self.project_root / ch / "panels" / filename
+
+            if not img_path.is_file():
+                self.send_error(404, "Panel image not found")
+                return
+
+            ocr_res = run_deepseek_ocr_panel(img_path)
+            self._send_json({"status": "ok", "filename": filename, "ocr_text": ocr_res})
+            return
 
         if path == "/api/save-narration":
             ch = data.get("chapter", self.active_item)

@@ -1,4 +1,4 @@
-"""restory.web.server_crop — HTTP server & API with Background Batch Cropping & Live Progress Polling."""
+"""restory.web.server_crop — HTTP server & REST API for Paged Manga Canva-style Crop Editor."""
 
 from __future__ import annotations
 
@@ -30,7 +30,6 @@ from restory.panels import (
     save_chapter_boxes,
 )
 
-# Global progress state for live modal progress tracking
 crop_progress_lock = threading.Lock()
 crop_progress_state = {
     "running": False,
@@ -58,21 +57,17 @@ def execute_batch_crop_thread(project_root: Path, chapter: str, scope: str, engi
         item_dirs = [d for d in project_root.iterdir() if d.is_dir() and (d / "download").is_dir()]
         item_dirs.sort(key=lambda d: d.name)
 
-        if scope == "chapter":
-            target_dirs = [d for d in item_dirs if d.name == normalize_chapter_name(chapter) or d.name == chapter]
-            if not target_dirs:
-                target_dirs = [item_dirs[0]] if item_dirs else []
-        elif scope == "all":
-            target_dirs = item_dirs
-        else:
-            target_dirs = [d for d in item_dirs if d.name == normalize_chapter_name(chapter) or d.name == chapter]
+        # Single chapter constraint per execution
+        target_dirs = [d for d in item_dirs if d.name == normalize_chapter_name(chapter) or d.name == chapter]
+        if not target_dirs and item_dirs:
+            target_dirs = [item_dirs[0]]
 
         total_pages = sum(len(collect_images(d / "download")) for d in target_dirs)
         if total_pages == 0:
             update_progress(0, 0, "No pages found to crop.", running=False, error="No page images found.")
             return
 
-        update_progress(0, total_pages, f"Starting batch crop ({scope}) using '{engine}' engine...", running=True)
+        update_progress(0, total_pages, f"Starting detection for Chapter {target_dirs[0].name} using '{engine}' engine...", running=True)
         processed_pages = 0
 
         for ch_dir in target_dirs:
@@ -81,11 +76,9 @@ def execute_batch_crop_thread(project_root: Path, chapter: str, scope: str, engi
                 continue
 
             update_progress(processed_pages, total_pages, f"Detecting Chapter {ch_dir.name} ({len(pages)} pages)...", running=True, ch=ch_dir.name)
-
             boxes_dict = {"version": 2, "pages": {}}
 
             if engine == "magi":
-                # CUDA GPU Batch Prediction
                 batch_res = detect_magi_batch(pages)
                 for p in pages:
                     boxes_dict["pages"][p.stem] = batch_res.get(p, [])
@@ -98,7 +91,6 @@ def execute_batch_crop_thread(project_root: Path, chapter: str, scope: str, engi
                 update_progress(processed_pages, total_pages, f"Webtoon Strip: Processed Ch {ch_dir.name}", running=True, ch=ch_dir.name)
                 continue
             else:
-                # Japanese Paged Manga Python CV logic
                 for p in pages:
                     with Image.open(p) as im:
                         boxes_dict["pages"][p.stem] = detect_japanese_paged(im)
@@ -107,7 +99,7 @@ def execute_batch_crop_thread(project_root: Path, chapter: str, scope: str, engi
 
             recrop_chapter_from_boxes(ch_dir, boxes_dict, rtl=rtl)
 
-        update_progress(total_pages, total_pages, "Batch crop & physical render completed successfully!", running=False)
+        update_progress(total_pages, total_pages, "Chapter detection & physical render completed successfully!", running=False)
     except Exception as exc:
         update_progress(0, 0, f"Error: {exc}", running=False, error=str(exc))
 
@@ -218,11 +210,11 @@ class CropEditorHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/start-batch-crop":
             with crop_progress_lock:
                 if crop_progress_state["running"]:
-                    self._send_json({"status": "error", "message": "Batch crop already in progress."})
+                    self._send_json({"status": "error", "message": "Detection already in progress."})
                     return
 
             ch = data.get("chapter", self.active_item)
-            scope = data.get("scope", "chapter") # 'page', 'chapter', 'all'
+            scope = data.get("scope", "chapter")
             engine = data.get("engine", "japanese")
             rtl = bool(data.get("rtl", True))
 

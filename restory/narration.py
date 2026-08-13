@@ -1,4 +1,4 @@
-"""restory.narration — Narration contract validation, prompt loader, and script editing."""
+"""restory.narration — Narration contract validation, DeepSeek-OCR 2 script bridge, and prompt loader."""
 
 from __future__ import annotations
 
@@ -26,14 +26,7 @@ def is_speakable(text: str) -> bool:
 
 
 def validate_narration_json(ch_dir: Path, require_panels: bool = True) -> list[dict[str, Any]]:
-    """Validate narration.json for a chapter folder according to restory contract rules.
-
-    Rules:
-    1. Every panel image in panels/ must be listed in narration.json in reading order.
-    2. 'narration' can be empty ("") for covers, credits, or decorative panels.
-    3. Duplicate images or duplicate audio stems (<stem>.wav) are forbidden.
-    4. Text must be speakable if non-empty (no pure punctuation like "?!").
-    """
+    """Validate narration.json for a chapter folder according to restory contract rules."""
     narration_file = ch_dir / "narration.json"
     if not narration_file.is_file():
         raise NarrationError(f"Missing narration.json in {ch_dir}")
@@ -90,6 +83,7 @@ def validate_narration_json(ch_dir: Path, require_panels: bool = True) -> list[d
             "narration": text,
             "beat_id": beat_id,
             "pause_after_ms": int(entry.get("pause_after_ms") or 0),
+            "ocr_text": str(entry.get("ocr_text") or "").strip(),
         })
 
     if require_panels and actual_panels:

@@ -1,47 +1,46 @@
-/**
- * restory.web.static.js.layer_manager — Layer stack sidebar manager.
- */
+/* restory — Panel Layer Stack & Z-Index Manager */
 
-function renderLayerStack(boxes, selectedIndex, callbacks) {
+function renderLayerList(boxes, selectedIndex, onSelect, onToggleLock, onToggleVisible, onDelete) {
     const listEl = document.getElementById('layer-list');
     if (!listEl) return;
+    
     listEl.innerHTML = '';
-
-    if (!boxes || boxes.length === 0) {
-        listEl.innerHTML = '<li style="padding:10px; color:#94a3b8; font-size:0.8rem; text-align:center;">No panel layers on page.</li>';
-        return;
-    }
-
+    
     boxes.forEach((box, idx) => {
         const li = document.createElement('li');
         li.className = `layer-item ${idx === selectedIndex ? 'selected' : ''}`;
         
-        const w = Math.round(Math.abs(box.x2 - box.x1));
-        const h = Math.round(Math.abs(box.y2 - box.y1));
-        const label = box.label ? box.label : `Panel #${idx + 1}`;
-
-        li.innerHTML = `
-            <span><strong>#${idx + 1}</strong> ${label} <small>(${w}x${h})</small></span>
-            <div class="layer-controls">
-                <button class="layer-btn ${box.visible ? 'active' : ''}" title="Toggle Visibility" data-action="visible">&eye;</button>
-                <button class="layer-btn ${box.locked ? 'active' : ''}" title="Toggle Lock" data-action="lock">&#128274;</button>
-                <button class="layer-btn" title="Delete Layer" data-action="delete" style="color:#ef4444;">&times;</button>
-            </div>
-        `;
-
-        li.addEventListener('click', (e) => {
-            const btn = e.target.closest('.layer-btn');
-            if (btn) {
-                e.stopPropagation();
-                const action = btn.dataset.action;
-                if (action === 'visible' && callbacks.onToggleVisible) callbacks.onToggleVisible(idx);
-                if (action === 'lock' && callbacks.onToggleLock) callbacks.onToggleLock(idx);
-                if (action === 'delete' && callbacks.onDelete) callbacks.onDelete(idx);
-            } else {
-                if (callbacks.onSelect) callbacks.onSelect(idx);
-            }
-        });
-
+        const label = document.createElement('span');
+        label.innerText = `Panel ${idx + 1} (${box.x2 - box.x1}×${box.y2 - box.y1})`;
+        label.onclick = () => onSelect(idx);
+        
+        const controls = document.createElement('div');
+        controls.className = 'layer-controls';
+        
+        const lockBtn = document.createElement('button');
+        lockBtn.className = `layer-btn ${box.locked ? 'active' : ''}`;
+        lockBtn.innerHTML = box.locked ? '🔒' : '🔓';
+        lockBtn.title = box.locked ? 'Unlock Layer' : 'Lock Layer';
+        lockBtn.onclick = (e) => { e.stopPropagation(); onToggleLock(idx); };
+        
+        const visBtn = document.createElement('button');
+        visBtn.className = `layer-btn ${box.visible ? 'active' : ''}`;
+        visBtn.innerHTML = box.visible ? '👁️' : '🙈';
+        visBtn.title = box.visible ? 'Hide Layer' : 'Show Layer';
+        visBtn.onclick = (e) => { e.stopPropagation(); onToggleVisible(idx); };
+        
+        const delBtn = document.createElement('button');
+        delBtn.className = 'layer-btn';
+        delBtn.innerHTML = '✕';
+        delBtn.title = 'Delete Layer';
+        delBtn.onclick = (e) => { e.stopPropagation(); onDelete(idx); };
+        
+        controls.appendChild(lockBtn);
+        controls.appendChild(visBtn);
+        controls.appendChild(delBtn);
+        
+        li.appendChild(label);
+        li.appendChild(controls);
         listEl.appendChild(li);
     });
 }

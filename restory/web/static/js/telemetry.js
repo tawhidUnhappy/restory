@@ -1,23 +1,22 @@
-/**
- * restory.web.static.js.telemetry — Telemetry polling script.
- */
+/* restory — System Telemetry & GPU Banner Monitor */
 
-async function pollTelemetry() {
+async function fetchTelemetry() {
     try {
-        const resp = await fetch('/api/telemetry');
-        if (!resp.ok) return;
-        const data = await resp.json();
-        const gpuEl = document.getElementById('telemetry-gpu');
-        if (gpuEl && data.gpu) {
-            const name = data.gpu.device_name || data.gpu.backend || 'CPU';
-            gpuEl.textContent = `GPU: ${name}`;
+        const res = await fetch('/api/telemetry');
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        const gpuSpan = document.getElementById('telemetry-gpu');
+        if (gpuSpan && data.gpu) {
+            const backend = (data.gpu.backend || 'CPU').toUpperCase();
+            const device = data.gpu.device_name ? ` (${data.gpu.device_name})` : '';
+            gpuSpan.innerText = `GPU: ${backend}${device}`;
         }
-    } catch (err) {
-        console.warn('Telemetry fetch failed:', err);
+    } catch (e) {
+        console.warn('Telemetry fetch error:', e);
     }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    pollTelemetry();
-    setInterval(pollTelemetry, 15000);
+    fetchTelemetry();
 });

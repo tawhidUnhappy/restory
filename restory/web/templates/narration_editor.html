@@ -10,11 +10,12 @@
 <body>
     <header>
         <div class="header-title">
-            <span>restory <span class="brand-accent">Narration Script Editor</span></span>
+            <span>restory</span>
+            <span class="brand-tag">Side-by-Side Narration Script Editor</span>
         </div>
 
         <div class="controls-group">
-            <label for="chapter-select" style="font-size:0.85rem; color:var(--text-muted);">Chapter:</label>
+            <label for="chapter-select" style="font-size:0.8rem; color:var(--text-muted);">Chapter:</label>
             <select id="chapter-select" onchange="switchChapter(this.value)"></select>
             <span class="telemetry-badge" id="stats-counter">0 / 0 Narrated</span>
         </div>
@@ -22,7 +23,7 @@
         <div class="controls-group">
             <button onclick="runNarrationCheck()">Validate Contract Rules</button>
             <button class="btn-accent" onclick="saveNarration()">Save Script (Ctrl+S)</button>
-            <button class="btn-success" onclick="finishAndContinue()">Done & Continue Pipeline &rarr;</button>
+            <button class="btn-success" onclick="finishAndContinue()">Done & Continue &rarr;</button>
         </div>
     </header>
 

@@ -1,42 +1,26 @@
-/**
- * restory.virtual_scroll — Viewport windowing renderer for ultra-tall webtoon canvas strips.
- */
+/* restory — Virtual Scroll Container Helper */
 
-class VirtualStripScroll {
-    constructor(containerEl, pages, totalHeight) {
+class VirtualStripContainer {
+    constructor(containerEl, pagesList, chapter) {
         this.container = containerEl;
-        this.pages = pages;
-        this.totalHeight = totalHeight;
-        this.visibleBuffer = 2000;
+        this.pages = pagesList;
+        this.chapter = chapter;
+        this.renderedImages = [];
     }
 
-    renderViewport(scrollTop, viewportHeight) {
-        let minY = scrollTop - this.visibleBuffer;
-        let maxY = scrollTop + viewportHeight + this.visibleBuffer;
+    renderAllPages() {
+        this.container.innerHTML = '';
+        let currentTop = 0;
 
-        let currY = 0;
-        this.pages.forEach((page) => {
-            let pageH = page.height || 1200;
-            let pageTop = currY;
-            let pageBottom = currY + pageH;
-
-            let imgEl = document.getElementById(`img-${page.stem}`);
-            if (pageBottom >= minY && pageTop <= maxY) {
-                if (!imgEl) {
-                    imgEl = document.createElement("img");
-                    imgEl.id = `img-${page.stem}`;
-                    imgEl.src = `/image/download/${page.chapter}/${page.filename}`;
-                    imgEl.style.position = "absolute";
-                    imgEl.style.top = `${pageTop}px`;
-                    imgEl.style.left = "0px";
-                    imgEl.style.width = "100%";
-                    this.container.appendChild(imgEl);
-                }
-            } else {
-                if (imgEl) imgEl.remove();
-            }
-
-            currY += pageH;
+        this.pages.forEach((page, idx) => {
+            const img = document.createElement('img');
+            img.dataset.filename = page.filename;
+            img.style.display = 'block';
+            img.style.width = '100%';
+            img.src = `/image/download/${this.chapter}/${page.filename}`;
+            
+            this.container.appendChild(img);
+            this.renderedImages.push(img);
         });
     }
 }

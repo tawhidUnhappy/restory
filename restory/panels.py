@@ -1,4 +1,4 @@
-"""restory.panels — Deferred cropping metadata persistence ledger and single-pass crop executor."""
+"""restory.panels — Single-chapter deferred cropping metadata ledger and physical crop executor."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from restory.config import load_project_manga_json, save_project_manga_json
-from restory.layout import project_dir, filter_item_dirs
+from restory.layout import filter_item_dirs
 from restory.detectors import (
     detect_japanese_paged,
     detect_magi_batch,
@@ -57,7 +57,7 @@ def save_chapter_boxes(ch_dir: Path, boxes_data: dict) -> None:
 
 
 def recrop_chapter_from_boxes(ch_dir: Path, boxes_data: dict, rtl: bool = True) -> int:
-    """Execute physical image cropping pass into panels/ and review/ overlays strictly from boxes_data."""
+    """Execute single-pass physical crop pass into panels/ and review/ overlays strictly from boxes_data."""
     download_dir = ch_dir / "download"
     panels_dir = ch_dir / "panels"
     review_dir = ch_dir / "review"
@@ -167,7 +167,7 @@ def style_detect_main(argv: list[str] | None = None) -> int:
 
 
 def page_split_main(argv: list[str] | None = None) -> int:
-    """Run batch detection engine on paged manga and save metadata."""
+    """Run panel box detection on paged manga chapters and save metadata."""
     parser = argparse.ArgumentParser(prog="restory page-split")
     parser.add_argument("--project-root", type=Path, required=True)
     parser.add_argument("--items", nargs="*")
@@ -193,6 +193,8 @@ def page_split_main(argv: list[str] | None = None) -> int:
 
         if args.engine == "magi":
             batch_res = detect_magi_batch(pages)
+            for p in pages:
+                boxes_dict["pages"][p.stem] = batch_res.get(p, [])
         elif args.engine == "webtoon":
             webtoon_meta = detect_webtoon(ch_dir)
             save_chapter_boxes(ch_dir, webtoon_meta)
@@ -200,13 +202,9 @@ def page_split_main(argv: list[str] | None = None) -> int:
             continue
         else:
             # Standard Japanese Paged Manga Python CV logic
-            batch_res = {}
             for p in pages:
                 with Image.open(p) as im:
-                    batch_res[p] = detect_japanese_paged(im)
-
-        for p in pages:
-            boxes_dict["pages"][p.stem] = batch_res.get(p, [])
+                    boxes_dict["pages"][p.stem] = detect_japanese_paged(im)
 
         save_chapter_boxes(ch_dir, boxes_dict)
         print(f"  [OK] Saved box metadata -> {get_boxes_json_path(ch_dir)}")

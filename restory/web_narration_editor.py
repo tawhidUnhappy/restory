@@ -1,4 +1,4 @@
-"""restory.web_narration_editor — Launcher for Side-by-Side Narration WebUI Editor."""
+"""restory.web_narration_editor — Launcher for Side-by-Side Narration WebUI Editor with DeepSeek-OCR 2."""
 
 from __future__ import annotations
 

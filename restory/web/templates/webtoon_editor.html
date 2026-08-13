@@ -10,7 +10,8 @@
 <body>
     <header>
         <div class="header-title">
-            <span>restory Webtoon Editor</span>
+            <span>restory</span>
+            <span class="brand-tag">Webtoon Strip Editor</span>
             <div class="telemetry-badge" id="telemetry-banner">
                 <span class="status-dot"></span>
                 <span id="telemetry-gpu">GPU: Loading...</span>
@@ -18,15 +19,15 @@
         </div>
 
         <div class="controls-group">
-            <label for="chapter-select">Chapter:</label>
+            <label for="chapter-select" style="font-size:0.8rem; color:var(--text-muted);">Chapter:</label>
             <select id="chapter-select" onchange="switchChapter(this.value)"></select>
-            <span id="cuts-counter" style="font-size:0.85rem; color:var(--text-muted);">0 Panels</span>
+            <span id="cuts-counter" style="font-size:0.82rem; color:var(--text-muted);">0 Panels</span>
         </div>
 
         <div class="controls-group">
             <button onclick="addCutAtCenter()">+ Add Horizontal Cut (S)</button>
-            <button class="btn-accent" onclick="saveWebtoon()">Save & Crop Panels (Ctrl+S)</button>
-            <button class="btn-success" onclick="finishAndContinue()">Done & Continue Pipeline &rarr;</button>
+            <button class="btn-accent" onclick="saveWebtoon()">Save & Crop (Ctrl+S)</button>
+            <button class="btn-success" onclick="finishAndContinue()">Done & Continue &rarr;</button>
         </div>
     </header>
 
@@ -40,7 +41,7 @@
         <div class="sidebar">
             <div class="card">
                 <div class="card-title">Panel Motion Controls</div>
-                <div id="panel-details" style="font-size:0.82rem; color:var(--text-muted);">
+                <div id="panel-details" style="font-size:0.8rem; color:var(--text-muted);">
                     Select a cut line to edit camera motion properties.
                 </div>
             </div>
@@ -50,7 +51,7 @@
                 <div class="hotkey-list">
                     <p><kbd>S</kbd> : Add Horizontal Cut Line</p>
                     <p><kbd>Del</kbd> : Delete Selected Cut Line</p>
-                    <p><kbd>Ctrl+S</kbd> : Save & Crop Webtoon</p>
+                    <p><kbd>Ctrl+S</kbd> : Save & Crop Panels</p>
                 </div>
             </div>
         </div>

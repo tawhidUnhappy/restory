@@ -1,4 +1,4 @@
-"""restory.download — MangaDex downloader with page verification ledger."""
+"""restory.download — MangaDex downloader with page verification ledger and URL persistence."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from PIL import Image
 
 from restory import __version__, __product_name__
 from restory.config import save_project_manga_json, load_project_manga_json
-from restory.layout import chapter_dir, ensure_project_layout
+from restory.layout import chapter_dir, ensure_project_layout, library_root
 
 API_BASE = "https://api.mangadex.org"
 USER_AGENT = f"restory/{__version__} (+https://github.com/restory/restory)"
@@ -61,6 +61,14 @@ def _api_get(sess: requests.Session, url: str, params: dict | None = None, retri
                 raise exc
             time.sleep(min(30, 3 * (2 ** attempt)))
     raise RuntimeError(f"All {retries} API attempts failed for {url}")
+
+
+def is_mangadex_url_or_uuid(text: str) -> bool:
+    """Return True if text contains a MangaDex UUID or URL."""
+    if not text:
+        return False
+    uuid_pattern = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+    return bool(re.search(uuid_pattern, text.strip()))
 
 
 def extract_manga_id(url_or_id: str) -> str:
@@ -179,35 +187,90 @@ def download_chapter_pages(sess: requests.Session, chapter_id: str, download_dir
 
 def download_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=f"{__product_name__} download")
-    parser.add_argument("url", help="MangaDex title URL or UUID.")
-    parser.add_argument("chapters", nargs="?", default="all")
+    parser.add_argument("arg1", nargs="?", default=None, help="MangaDex title URL/UUID OR chapter range (e.g. '01-05', '01', 'all').")
+    parser.add_argument("arg2", nargs="?", default=None, help="Chapter range if arg1 is MangaDex URL/UUID.")
     parser.add_argument("--name", help="Custom project folder name.")
     parser.add_argument("--lang", default="en")
 
     args = parser.parse_args(argv)
-    manga_id = extract_manga_id(args.url)
 
-    sess = _session()
-    info = fetch_manga_info(sess, manga_id)
-    manga_name = args.name or info["slug"]
+    if args.arg1 and is_mangadex_url_or_uuid(args.arg1):
+        raw_url = args.arg1
+        chapters_spec = args.arg2 or "all"
+    else:
+        raw_url = None
+        chapters_spec = args.arg1 or args.arg2 or "all"
+
+    manga_name = args.name
+    if not manga_name:
+        if raw_url:
+            manga_id = extract_manga_id(raw_url)
+            sess = _session()
+            info = fetch_manga_info(sess, manga_id)
+            manga_name = info["slug"]
+        else:
+            lib_dir = library_root()
+            existing_projects = [d.name for d in lib_dir.iterdir() if d.is_dir()] if lib_dir.is_dir() else []
+            if len(existing_projects) == 1:
+                manga_name = existing_projects[0]
+            elif len(existing_projects) > 1:
+                print(f"[ERROR] Multiple projects found: {', '.join(existing_projects)}.\n"
+                      f"Please specify --name <project_name> (e.g. --name {existing_projects[0]}).", file=sys.stderr)
+                return 1
+            else:
+                print("[ERROR] No existing project found. Please provide a MangaDex URL/UUID to start a new project.", file=sys.stderr)
+                return 1
 
     ensure_project_layout(manga_name)
     manga_ledger = load_project_manga_json(manga_name)
+
+    sess = _session()
+    if raw_url:
+        manga_id = extract_manga_id(raw_url)
+        info = fetch_manga_info(sess, manga_id)
+    else:
+        manga_id = manga_ledger.get("manga_id")
+        if not manga_id and manga_ledger.get("manga_url"):
+            try:
+                manga_id = extract_manga_id(manga_ledger["manga_url"])
+            except Exception:
+                pass
+
+        if not manga_id:
+            print(f"[ERROR] No saved MangaDex URL or ID found in project '{manga_name}' (manga.json).\n"
+                  f"Please provide the MangaDex URL for initial download:\n"
+                  f"  ./run.sh download <MangaDex_URL> {chapters_spec} --name {manga_name}", file=sys.stderr)
+            return 1
+
+        print(f"--> Using saved MangaDex ID '{manga_id}' for project '{manga_name}'")
+        info = fetch_manga_info(sess, manga_id)
+        if manga_ledger.get("official_title"):
+            info["title"] = manga_ledger["official_title"]
+
     manga_ledger.update({
         "manga_id": manga_id,
+        "manga_url": f"https://mangadex.org/title/{manga_id}",
         "manga_name": manga_name,
-        "official_title": info["title"],
-        "original_language": info["original_language"],
-        "format": info["format"],
+        "official_title": info.get("title", manga_name),
+        "original_language": info.get("original_language", "ja"),
+        "format": info.get("format", manga_ledger.get("format", "paged")),
     })
+    save_project_manga_json(manga_name, manga_ledger)
 
     feed = fetch_chapter_feed(sess, manga_id, lang=args.lang)
     if not feed:
         print(f"[ERROR] No chapters found for language '{args.lang}'.", file=sys.stderr)
         return 1
 
-    target_chs = sorted(feed.keys()) if args.chapters in ("all", "*") else [args.chapters]
-    ledger_chapters = manga_ledger.get("chapters", {})
+    target_chs = sorted(feed.keys()) if chapters_spec in ("all", "*") else [chapters_spec]
+    if "-" in chapters_spec and not is_mangadex_url_or_uuid(chapters_spec):
+        parts = [p.strip() for p in chapters_spec.split("-", 1)]
+        if parts[0].isdigit() and parts[1].isdigit():
+            start_c, end_c = int(parts[0]), int(parts[1])
+            target_chs = [
+                ch for ch in sorted(feed.keys(), key=lambda x: float(x) if x.replace(".", "", 1).isdigit() else 9999)
+                if ch.replace(".", "", 1).isdigit() and start_c <= float(ch) <= end_c
+            ]
 
     for ch_str in target_chs:
         if ch_str not in feed:
