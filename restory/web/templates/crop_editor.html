@@ -27,14 +27,22 @@
         </div>
 
         <div class="controls-group">
-            <label for="engine-select" style="font-size:0.85rem; color:var(--text-muted);">Detector Engine:</label>
+            <label for="scope-select" style="font-size:0.85rem; color:var(--text-muted);">Crop Scope:</label>
+            <select id="scope-select">
+                <option value="page">Current Page</option>
+                <option value="chapter" selected>Current Chapter</option>
+                <option value="all">All Chapters</option>
+            </select>
+
+            <label for="engine-select" style="font-size:0.85rem; color:var(--text-muted);">Engine:</label>
             <select id="engine-select">
                 <option value="japanese">Japanese Manga (Python CV)</option>
                 <option value="magi">MAGI v3 (AI Transformer)</option>
                 <option value="webtoon">Webtoon Strip Cut</option>
             </select>
-            <button onclick="runRedetect()">Re-Detect Live</button>
-            <button class="btn-accent" onclick="saveAndRecrop()">Save & Re-Crop (Ctrl+S)</button>
+
+            <button class="btn-accent" onclick="triggerCropExecution()">Run Detection / Crop</button>
+            <button onclick="saveAndRecrop()">Save & Re-Crop (Ctrl+S)</button>
             <button class="btn-success" onclick="finishAndContinue()">Done & Continue Pipeline &rarr;</button>
         </div>
     </header>
@@ -73,6 +81,21 @@
                     <p><kbd>Ctrl+S</kbd> : Save & Re-Crop</p>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Live Batch Crop Progress Modal -->
+    <div class="modal-overlay" id="progress-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span class="brand-accent">&#9881;</span>
+                <span id="modal-title">Running Batch Crop...</span>
+            </div>
+            <div class="progress-status" id="modal-msg">Initializing detector engine...</div>
+            <div class="progress-track">
+                <div class="progress-bar" id="modal-bar"></div>
+            </div>
+            <div style="font-size:0.78rem; color:var(--text-muted); text-align:right;" id="modal-counter">0 / 0 Pages</div>
         </div>
     </div>
 

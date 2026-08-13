@@ -1,5 +1,5 @@
 /**
- * restory.web.static.js.narration_editor — Side-by-Side Narration Editor Script.
+ * restory.web.static.js.narration_editor — Side-by-Side Narration Script Editor.
  */
 
 let activeChapter = "01";

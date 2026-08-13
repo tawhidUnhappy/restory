@@ -1,5 +1,5 @@
 /**
- * restory.web.static.js.crop_editor — Canvas Editor with Canva-style Dragging & Dynamic Cursors.
+ * restory.web.static.js.crop_editor — Canva-Style Dragging, Dynamic Cursors, & Live Batch Modal Polling.
  */
 
 let activeChapter = "01";
@@ -19,6 +19,9 @@ let resizeHandle = null;
 let dragStartX = 0;
 let dragStartY = 0;
 let initialBoxCoords = null;
+
+// Progress Polling Handle
+let progressPollTimer = null;
 
 const canvas = document.getElementById('editor-canvas');
 const ctx = canvas.getContext('2d');
@@ -46,7 +49,7 @@ async function fetchChapterData() {
         const select = document.getElementById('chapter-select');
         if (select) {
             select.innerHTML = '';
-            data.chapters.forEach(ch => {
+            (data.chapters || []).forEach(ch => {
                 const opt = document.createElement('option');
                 opt.value = ch;
                 opt.textContent = `Chapter ${ch}`;
@@ -129,7 +132,7 @@ function renderCanvas() {
         ctx.font = 'bold 13px sans-serif';
         ctx.fillText(`${idx + 1}`, x1 + 8, y1 + 16);
 
-        // Render Handles for selected box
+        // Handles
         if (isSelected && !box.locked) {
             drawHandles(x1, y1, w, h);
         }
@@ -164,7 +167,7 @@ function getHandleCoords(x, y, w, h) {
 }
 
 /**
- * Canva-style Mouse Coordinate Mapper: Clamps coordinates seamlessly even when dragging outside canvas.
+ * Canva-style Mouse Mapper: Clamps coordinates seamlessly even when dragging outside canvas boundaries.
  */
 function getCanvasMousePos(e) {
     const rect = canvas.getBoundingClientRect();
@@ -174,7 +177,6 @@ function getCanvasMousePos(e) {
     let x = Math.round((e.clientX - rect.left) * scaleX);
     let y = Math.round((e.clientY - rect.top) * scaleY);
 
-    // Canva-style clamping to image boundaries
     x = Math.max(0, Math.min(x, canvas.width));
     y = Math.max(0, Math.min(y, canvas.height));
 
@@ -182,7 +184,7 @@ function getCanvasMousePos(e) {
 }
 
 /**
- * Dynamic Cursor & Icon Changes based on hover state.
+ * Dynamic Cursor & Icon Changes on hover.
  */
 function updateDynamicCursor(pos) {
     if (isDragging) {
@@ -213,7 +215,7 @@ function updateDynamicCursor(pos) {
         }
     }
 
-    // Check box hover
+    // Box body hover
     for (let i = boxes.length - 1; i >= 0; i--) {
         const b = boxes[i];
         const x1 = Math.min(b.x1, b.x2);
@@ -263,7 +265,6 @@ function deleteBoxAt(pos) {
 }
 
 function setupEventListeners() {
-    // Right-click deletes panel box
     canvas.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         const pos = getCanvasMousePos(e);
@@ -271,11 +272,11 @@ function setupEventListeners() {
     });
 
     canvas.addEventListener('mousedown', (e) => {
-        if (e.button === 2) return; // Right-click handled by contextmenu
+        if (e.button === 2) return;
         const pos = getCanvasMousePos(e);
         const boxes = getCurrentBoxes();
 
-        // Check handle click on selected box
+        // Check handle click
         if (selectedBoxIndex >= 0 && selectedBoxIndex < boxes.length) {
             const b = boxes[selectedBoxIndex];
             if (!b.locked) {
@@ -323,7 +324,7 @@ function setupEventListeners() {
             renderCanvas();
             updateSidebar();
         } else {
-            // Start drawing new Canva-style box
+            // Start drawing Canva-style box
             selectedBoxIndex = -1;
             isDrawing = true;
             dragStartX = pos.x;
@@ -401,14 +402,12 @@ function setupEventListeners() {
     window.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
 
-        // Key 'F': Set Single Full-Page Box
         if (e.key === 'f' || e.key === 'F') {
             e.preventDefault();
             addFullPageBox();
             return;
         }
 
-        // Delete / Backspace: Remove selected box
         if (e.key === 'Delete' || e.key === 'Backspace') {
             if (selectedBoxIndex >= 0) {
                 e.preventDefault();
@@ -421,11 +420,9 @@ function setupEventListeners() {
             return;
         }
 
-        // Navigation
         if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') prevPage();
         if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') nextPage();
 
-        // Save
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
             e.preventDefault();
             saveAndRecrop();
@@ -448,7 +445,7 @@ function updateSidebar() {
 function addFullPageBox() {
     if (!imageLoaded) return;
     const boxes = getCurrentBoxes();
-    boxes.length = 0; // Clear all existing boxes
+    boxes.length = 0;
     boxes.push({
         x1: 0,
         y1: 0,
@@ -464,6 +461,99 @@ function addFullPageBox() {
     showToast('Page set to single full-page panel');
     renderCanvas();
     updateSidebar();
+}
+
+/**
+ * Scope-Based Live Detection & Batch Crop Trigger.
+ */
+async function triggerCropExecution() {
+    const scope = document.getElementById('scope-select').value;
+    const engine = document.getElementById('engine-select').value;
+
+    if (scope === 'page') {
+        if (pageList.length === 0) return;
+        const filename = pageList[currentPageIndex].filename;
+        showToast(`Running ${engine.toUpperCase()} detection...`);
+        try {
+            const res = await fetch('/api/redetect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chapter: activeChapter, filename: filename, engine: engine })
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                const stem = pageList[currentPageIndex].stem;
+                boxesData[stem] = data.boxes || [];
+                selectedBoxIndex = -1;
+                showToast('Page re-detected!');
+                renderCanvas();
+                updateSidebar();
+            }
+        } catch (e) {
+            console.error('Re-detect failed:', e);
+        }
+    } else {
+        // Scope is 'chapter' or 'all': open progress modal & start background batch crop
+        openProgressModal(`Cropping ${scope.toUpperCase()} using '${engine.toUpperCase()}'...`);
+        try {
+            await fetch('/api/start-batch-crop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chapter: activeChapter, scope: scope, engine: engine, rtl: rtlDirection })
+            });
+            startProgressPolling();
+        } catch (e) {
+            console.error('Batch crop start failed:', e);
+            closeProgressModal();
+        }
+    }
+}
+
+function openProgressModal(title) {
+    const modal = document.getElementById('progress-modal');
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-bar').style.width = '0%';
+    document.getElementById('modal-msg').textContent = 'Initializing...';
+    document.getElementById('modal-counter').textContent = '0 / 0 Pages';
+    if (modal) modal.classList.add('active');
+}
+
+function closeProgressModal() {
+    const modal = document.getElementById('progress-modal');
+    if (modal) modal.classList.remove('active');
+    if (progressPollTimer) {
+        clearInterval(progressPollTimer);
+        progressPollTimer = null;
+    }
+}
+
+function startProgressPolling() {
+    if (progressPollTimer) clearInterval(progressPollTimer);
+    progressPollTimer = setInterval(pollCropProgress, 500);
+}
+
+async function pollCropProgress() {
+    try {
+        const res = await fetch('/api/crop-progress');
+        const data = await res.json();
+
+        const pct = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+        document.getElementById('modal-bar').style.width = `${pct}%`;
+        document.getElementById('modal-msg').textContent = data.message || 'Processing...';
+        document.getElementById('modal-counter').textContent = `${data.current} / ${data.total} Pages (${pct}%)`;
+
+        if (!data.running) {
+            closeProgressModal();
+            if (data.error) {
+                alert('Crop Error: ' + data.error);
+            } else {
+                showToast('Batch crop complete!');
+                await fetchPageData(); // Refresh page boxes
+            }
+        }
+    } catch (e) {
+        console.error('Progress poll error:', e);
+    }
 }
 
 function prevPage() {
@@ -505,32 +595,6 @@ async function updateRtl(val) {
         }
     } catch (e) {
         console.error('Failed to sort boxes:', e);
-    }
-}
-
-async function runRedetect() {
-    if (pageList.length === 0) return;
-    const engine = document.getElementById('engine-select').value;
-    const filename = pageList[currentPageIndex].filename;
-    
-    showToast(`Running ${engine.toUpperCase()} detection live...`);
-    try {
-        const res = await fetch('/api/redetect', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chapter: activeChapter, filename: filename, engine: engine })
-        });
-        const data = await res.json();
-        if (data.status === 'ok') {
-            const stem = pageList[currentPageIndex].stem;
-            boxesData[stem] = data.boxes || [];
-            selectedBoxIndex = -1;
-            showToast('Page re-detected live!');
-            renderCanvas();
-            updateSidebar();
-        }
-    } catch (e) {
-        console.error('Re-detect failed:', e);
     }
 }
 

@@ -1,4 +1,4 @@
-"""restory.web.server_crop — HTTP server and REST API for Paged Manga Crop Editor with Live Engine Switching."""
+"""restory.web.server_crop — HTTP server & API with Background Batch Cropping & Live Progress Polling."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import json
 import mimetypes
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -19,11 +20,96 @@ from restory.tools_manager import check_gpu
 from restory.detectors import (
     collect_images,
     detect_japanese_paged,
-    detect_magi,
+    detect_magi_batch,
     detect_webtoon,
     sort_reading_order,
 )
-from restory.panels import load_chapter_boxes, recrop_chapter_from_boxes, save_chapter_boxes
+from restory.panels import (
+    load_chapter_boxes,
+    recrop_chapter_from_boxes,
+    save_chapter_boxes,
+)
+
+# Global progress state for live modal progress tracking
+crop_progress_lock = threading.Lock()
+crop_progress_state = {
+    "running": False,
+    "current": 0,
+    "total": 0,
+    "message": "Idle",
+    "error": None,
+    "active_chapter": "",
+}
+
+
+def update_progress(current: int, total: int, msg: str, running: bool = True, error: str | None = None, ch: str = ""):
+    with crop_progress_lock:
+        crop_progress_state["running"] = running
+        crop_progress_state["current"] = current
+        crop_progress_state["total"] = total
+        crop_progress_state["message"] = msg
+        crop_progress_state["error"] = error
+        if ch:
+            crop_progress_state["active_chapter"] = ch
+
+
+def execute_batch_crop_thread(project_root: Path, chapter: str, scope: str, engine: str, rtl: bool):
+    try:
+        item_dirs = [d for d in project_root.iterdir() if d.is_dir() and (d / "download").is_dir()]
+        item_dirs.sort(key=lambda d: d.name)
+
+        if scope == "chapter":
+            target_dirs = [d for d in item_dirs if d.name == normalize_chapter_name(chapter) or d.name == chapter]
+            if not target_dirs:
+                target_dirs = [item_dirs[0]] if item_dirs else []
+        elif scope == "all":
+            target_dirs = item_dirs
+        else:
+            target_dirs = [d for d in item_dirs if d.name == normalize_chapter_name(chapter) or d.name == chapter]
+
+        total_pages = sum(len(collect_images(d / "download")) for d in target_dirs)
+        if total_pages == 0:
+            update_progress(0, 0, "No pages found to crop.", running=False, error="No page images found.")
+            return
+
+        update_progress(0, total_pages, f"Starting batch crop ({scope}) using '{engine}' engine...", running=True)
+        processed_pages = 0
+
+        for ch_dir in target_dirs:
+            pages = collect_images(ch_dir / "download")
+            if not pages:
+                continue
+
+            update_progress(processed_pages, total_pages, f"Detecting Chapter {ch_dir.name} ({len(pages)} pages)...", running=True, ch=ch_dir.name)
+
+            boxes_dict = {"version": 2, "pages": {}}
+
+            if engine == "magi":
+                # CUDA GPU Batch Prediction
+                batch_res = detect_magi_batch(pages)
+                for p in pages:
+                    boxes_dict["pages"][p.stem] = batch_res.get(p, [])
+                    processed_pages += 1
+                    update_progress(processed_pages, total_pages, f"MAGI AI: Processed {p.name} in Ch {ch_dir.name}", running=True, ch=ch_dir.name)
+            elif engine == "webtoon":
+                webtoon_meta = detect_webtoon(ch_dir)
+                save_chapter_boxes(ch_dir, webtoon_meta)
+                processed_pages += len(pages)
+                update_progress(processed_pages, total_pages, f"Webtoon Strip: Processed Ch {ch_dir.name}", running=True, ch=ch_dir.name)
+                continue
+            else:
+                # Japanese Paged Manga Python CV logic
+                for p in pages:
+                    with Image.open(p) as im:
+                        boxes_dict["pages"][p.stem] = detect_japanese_paged(im)
+                    processed_pages += 1
+                    update_progress(processed_pages, total_pages, f"Japanese CV: Processed {p.name} in Ch {ch_dir.name}", running=True, ch=ch_dir.name)
+
+            recrop_chapter_from_boxes(ch_dir, boxes_dict, rtl=rtl)
+
+        update_progress(total_pages, total_pages, "Batch crop & physical render completed successfully!", running=False)
+    except Exception as exc:
+        update_progress(0, 0, f"Error: {exc}", running=False, error=str(exc))
 
 
 class CropEditorHandler(http.server.BaseHTTPRequestHandler):
@@ -61,6 +147,12 @@ class CropEditorHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/telemetry":
             gpu = check_gpu()
             self._send_json({"product": "restory", "gpu": gpu, "active_engine": "japanese"})
+            return
+
+        if path == "/api/crop-progress":
+            with crop_progress_lock:
+                state_copy = dict(crop_progress_state)
+            self._send_json(state_copy)
             return
 
         if path == "/api/chapter-data":
@@ -123,6 +215,26 @@ class CropEditorHandler(http.server.BaseHTTPRequestHandler):
         raw_body = self.rfile.read(length).decode("utf-8")
         data = json.loads(raw_body) if raw_body else {}
 
+        if path == "/api/start-batch-crop":
+            with crop_progress_lock:
+                if crop_progress_state["running"]:
+                    self._send_json({"status": "error", "message": "Batch crop already in progress."})
+                    return
+
+            ch = data.get("chapter", self.active_item)
+            scope = data.get("scope", "chapter") # 'page', 'chapter', 'all'
+            engine = data.get("engine", "japanese")
+            rtl = bool(data.get("rtl", True))
+
+            t = threading.Thread(
+                target=execute_batch_crop_thread,
+                args=(self.project_root, ch, scope, engine, rtl),
+                daemon=True
+            )
+            t.start()
+            self._send_json({"status": "started", "scope": scope, "engine": engine})
+            return
+
         if path == "/api/redetect":
             ch = data.get("chapter", self.active_item)
             filename = data.get("filename")
@@ -138,7 +250,7 @@ class CropEditorHandler(http.server.BaseHTTPRequestHandler):
                 return
 
             if engine == "magi":
-                raw_boxes = detect_magi(img_path)
+                raw_boxes = detect_magi_batch([img_path]).get(img_path, [])
             elif engine == "webtoon":
                 ch_dir = img_path.parent.parent
                 w_meta = detect_webtoon(ch_dir)
@@ -152,7 +264,6 @@ class CropEditorHandler(http.server.BaseHTTPRequestHandler):
                         "z_index": idx, "type": "rectangle", "locked": False, "visible": True, "label": "webtoon_strip"
                     })
             else:
-                # Japanese Paged Manga Python Logic
                 with Image.open(img_path) as im:
                     raw_boxes = detect_japanese_paged(im)
 
@@ -203,7 +314,7 @@ def run_crop_server(project_root: Path, item: str = "01", port: int = 8000, open
     url = f"http://localhost:{port}"
 
     print(f"\n============================================================")
-    print(f" restory Crop & Layer Editor running at: {url}")
+    print(f" restory Crop Editor running at: {url}")
     print(f" Press 'Done & Continue Pipeline' in browser to finish.")
     print(f"============================================================\n")
 
