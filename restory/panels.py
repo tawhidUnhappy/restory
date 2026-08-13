@@ -6,6 +6,8 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+import numpy as np
 from PIL import Image, ImageDraw
 
 from restory.config import load_project_manga_json
