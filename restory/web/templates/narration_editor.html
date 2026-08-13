@@ -3,22 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Side-by-Side Narration Script Editor — restory</title>
+    <title>Narration Script Editor — restory</title>
     <link rel="stylesheet" href="/static/css/common.css">
     <link rel="stylesheet" href="/static/css/narration_editor.css">
 </head>
 <body>
     <header>
-        <div class="header-title">restory Narration Editor</div>
+        <div class="header-title">
+            <span>restory <span class="brand-accent">Narration Script Editor</span></span>
+        </div>
 
         <div class="controls-group">
-            <label for="chapter-select">Chapter:</label>
+            <label for="chapter-select" style="font-size:0.85rem; color:var(--text-muted);">Chapter:</label>
             <select id="chapter-select" onchange="switchChapter(this.value)"></select>
             <span class="telemetry-badge" id="stats-counter">0 / 0 Narrated</span>
         </div>
 
         <div class="controls-group">
-            <button onclick="runNarrationCheck()">Validate Contract</button>
+            <button onclick="runNarrationCheck()">Validate Contract Rules</button>
             <button class="btn-accent" onclick="saveNarration()">Save Script (Ctrl+S)</button>
             <button class="btn-success" onclick="finishAndContinue()">Done & Continue Pipeline &rarr;</button>
         </div>

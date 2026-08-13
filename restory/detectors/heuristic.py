@@ -1,4 +1,4 @@
-"""restory.detectors.heuristic — Classic OpenCV and NumPy panel detection algorithms."""
+"""restory.detectors.heuristic — Python CV logic specialized for Japanese paged manga panel & gutter detection."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def collect_images(folder: Path) -> list[Path]:
 
 
 def clamp_box(raw: list | dict, w: int, h: int) -> dict | None:
-    """Ensure coordinates stay strictly within image dimensions [0, 0, w, h]."""
+    """Ensure box coordinates stay strictly within image bounds [0, 0, w, h]."""
     try:
         if isinstance(raw, dict):
             x1, y1, x2, y2 = raw["x1"], raw["y1"], raw["x2"], raw["y2"]
@@ -47,8 +47,8 @@ def clamp_box(raw: list | dict, w: int, h: int) -> dict | None:
     }
 
 
-def is_blank_or_sliver(img_crop: Image.Image, min_dim: int = 100, max_ratio: float = 9.0) -> bool:
-    """Return True if an image crop is a sliver, extreme aspect ratio, or solid color."""
+def is_blank_or_sliver(img_crop: Image.Image, min_dim: int = 80, max_ratio: float = 10.0) -> bool:
+    """Return True if image crop is a sliver or solid blank color."""
     w, h = img_crop.size
     if w < min_dim or h < min_dim:
         return True
@@ -58,15 +58,14 @@ def is_blank_or_sliver(img_crop: Image.Image, min_dim: int = 100, max_ratio: flo
         return True
 
     gray = np.array(img_crop.convert("L"))
-    std_dev = float(gray.std())
-    if std_dev < 6.0:
+    if float(gray.std()) < 5.0:
         return True
 
     return False
 
 
 def sort_reading_order(boxes: list[dict], rtl: bool = True) -> list[dict]:
-    """Sort bounding boxes topologically according to reading direction (RTL or LTR)."""
+    """Sort panel bounding boxes in topological Japanese reading order (RTL, Top-to-Bottom)."""
     if len(boxes) <= 1:
         return list(boxes)
 
@@ -115,11 +114,11 @@ def sort_reading_order(boxes: list[dict], rtl: bool = True) -> list[dict]:
     return result
 
 
-def detect_heuristic(img: Image.Image) -> list[dict]:
-    """Detect panel bounding boxes using recursive XY-cut projection profiling."""
+def detect_japanese_paged(img: Image.Image) -> list[dict]:
+    """Pure Python/OpenCV logic specialized for Japanese paged manga panel box & gutter extraction."""
     w, h = img.size
     if w < 100 or h < 100:
-        return [{"x1": 0, "y1": 0, "x2": int(w), "y2": int(h), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": ""}]
+        return [{"x1": 0, "y1": 0, "x2": int(w), "y2": int(h), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": "japanese_paged"}]
 
     top_margin = int(h * 0.02)
     bot_margin = int(h * 0.98)
@@ -130,24 +129,25 @@ def detect_heuristic(img: Image.Image) -> list[dict]:
     border_pixels = np.concatenate([gray[top_margin:bot_margin, left_margin], gray[top_margin:bot_margin, right_margin - 1]])
     is_white_bg = float(np.median(border_pixels)) > 128.0
 
-    binary = (gray < 230).astype(np.uint8) if is_white_bg else (gray > 25).astype(np.uint8)
+    binary = (gray < 232).astype(np.uint8) if is_white_bg else (gray > 22).astype(np.uint8)
     binary[:top_margin, :] = 0
     binary[bot_margin:, :] = 0
     binary[:, :left_margin] = 0
     binary[:, right_margin:] = 0
 
-    def xy_cut(x1: int, y1: int, x2: int, y2: int, depth: int = 0) -> list[dict]:
+    def recursive_gutter_split(x1: int, y1: int, x2: int, y2: int, depth: int = 0) -> list[dict]:
         rw, rh = x2 - x1, y2 - y1
-        if depth > 8 or rw < 90 or rh < 90:
-            return [{"x1": int(x1), "y1": int(y1), "x2": int(x2), "y2": int(y2), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": ""}]
+        if depth > 7 or rw < 80 or rh < 80:
+            return [{"x1": int(x1), "y1": int(y1), "x2": int(x2), "y2": int(y2), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": "japanese_paged"}]
 
         region = binary[y1:y2, x1:x2]
         row_sums = region.sum(axis=1)
         col_sums = region.sum(axis=0)
 
-        row_thresh = max(2, int(rw * 0.025))
+        # 1. Look for horizontal gutters
+        row_thresh = max(2, int(rw * 0.02))
         empty_rows = row_sums <= row_thresh
-        min_gutter_h = max(4, int(rh * 0.008))
+        min_gutter_h = max(3, int(rh * 0.007))
 
         h_cuts = []
         in_g = False
@@ -162,21 +162,22 @@ def detect_heuristic(img: Image.Image) -> list[dict]:
                     in_g = False
                     if (r - g_start) >= min_gutter_h:
                         cut_y = y1 + (g_start + r) // 2
-                        if cut_y - y1 > 80 and y2 - cut_y > 80:
+                        if cut_y - y1 > 60 and y2 - cut_y > 60:
                             h_cuts.append(int(cut_y))
 
         if h_cuts:
             results = []
             last_y = y1
             for cy in h_cuts:
-                results.extend(xy_cut(x1, last_y, x2, cy, depth + 1))
+                results.extend(recursive_gutter_split(x1, last_y, x2, cy, depth + 1))
                 last_y = cy
-            results.extend(xy_cut(x1, last_y, x2, y2, depth + 1))
+            results.extend(recursive_gutter_split(x1, last_y, x2, y2, depth + 1))
             return results
 
-        col_thresh = max(2, int(rh * 0.025))
+        # 2. Look for vertical gutters
+        col_thresh = max(2, int(rh * 0.02))
         empty_cols = col_sums <= col_thresh
-        min_gutter_w = max(4, int(rw * 0.008))
+        min_gutter_w = max(3, int(rw * 0.007))
 
         v_cuts = []
         in_g = False
@@ -191,18 +192,19 @@ def detect_heuristic(img: Image.Image) -> list[dict]:
                     in_g = False
                     if (c - g_start) >= min_gutter_w:
                         cut_x = x1 + (g_start + c) // 2
-                        if cut_x - x1 > 80 and x2 - cut_x > 80:
+                        if cut_x - x1 > 60 and x2 - cut_x > 60:
                             v_cuts.append(int(cut_x))
 
         if v_cuts:
             results = []
             last_x = x1
             for cx in v_cuts:
-                results.extend(xy_cut(last_x, y1, cx, y2, depth + 1))
+                results.extend(recursive_gutter_split(last_x, y1, cx, y2, depth + 1))
                 last_x = cx
-            results.extend(xy_cut(last_x, y1, x2, y2, depth + 1))
+            results.extend(recursive_gutter_split(last_x, y1, x2, y2, depth + 1))
             return results
 
+        # Trim blank margins around content frame
         c_rows = np.where(row_sums > 0)[0]
         c_cols = np.where(col_sums > 0)[0]
         if len(c_rows) > 0 and len(c_cols) > 0:
@@ -211,24 +213,26 @@ def detect_heuristic(img: Image.Image) -> list[dict]:
             pad = 4
             tx1, ty1 = max(0, tx1 - pad), max(0, ty1 - pad)
             tx2, ty2 = min(w, tx2 + pad), min(h, ty2 + pad)
-            if (tx2 - tx1) >= 90 and (ty2 - ty1) >= 90:
-                return [{"x1": int(tx1), "y1": int(ty1), "x2": int(tx2), "y2": int(ty2), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": ""}]
+            if (tx2 - tx1) >= 80 and (ty2 - ty1) >= 80:
+                return [{"x1": int(tx1), "y1": int(ty1), "x2": int(tx2), "y2": int(ty2), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": "japanese_paged"}]
 
-        return [{"x1": int(x1), "y1": int(y1), "x2": int(x2), "y2": int(y2), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": ""}]
+        return [{"x1": int(x1), "y1": int(y1), "x2": int(x2), "y2": int(y2), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": "japanese_paged"}]
 
-    raw_boxes = xy_cut(0, 0, w, h)
-    page_area = w * h
+    raw_boxes = recursive_gutter_split(0, 0, w, h)
     valid_boxes = []
 
     for b in raw_boxes:
         bw, bh = b["x2"] - b["x1"], b["y2"] - b["y1"]
-        box_area = bw * bh
-        if box_area >= page_area * 0.02 and bw >= 90 and bh >= 90:
+        if (bw * bh) >= (w * h) * 0.015 and bw >= 80 and bh >= 80:
             crop = img.crop((b["x1"], b["y1"], b["x2"], b["y2"]))
             if not is_blank_or_sliver(crop):
                 valid_boxes.append(b)
 
     if not valid_boxes:
-        return [{"x1": 0, "y1": 0, "x2": int(w), "y2": int(h), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": ""}]
+        return [{"x1": 0, "y1": 0, "x2": int(w), "y2": int(h), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": "japanese_paged"}]
 
-    return valid_boxes
+    return sort_reading_order(valid_boxes, rtl=True)
+
+
+# Alias for backwards compatibility
+detect_heuristic = detect_japanese_paged

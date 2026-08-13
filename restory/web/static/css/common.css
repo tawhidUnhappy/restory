@@ -1,21 +1,23 @@
 :root {
-    --bg-dark: #0f172a;
-    --panel-bg: #1e293b;
-    --card-bg: #0f172a;
-    --accent: #f59e0b;
-    --accent-hover: #d97706;
+    --bg-dark: #090d16;
+    --panel-bg: #131927;
+    --card-bg: #0d121f;
+    --accent: #38bdf8;
+    --accent-hover: #0284c7;
     --success: #22c55e;
     --danger: #ef4444;
-    --info: #3b82f6;
+    --warning: #f59e0b;
+    --purple: #a855f7;
     --text-light: #f8fafc;
     --text-muted: #94a3b8;
-    --border: #334155;
+    --border: #1e293b;
+    --border-highlight: #334155;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background-color: var(--bg-dark);
     color: var(--text-light);
     height: 100vh;
@@ -36,24 +38,28 @@ header {
 }
 
 .header-title {
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     font-weight: 700;
-    color: var(--accent);
+    color: var(--text-light);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+}
+
+.header-title .brand-accent {
+    color: var(--accent);
 }
 
 .controls-group {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 button, select {
-    background-color: #334155;
-    color: #fff;
-    border: 1px solid var(--border);
+    background-color: #1e293b;
+    color: var(--text-light);
+    border: 1px solid var(--border-highlight);
     padding: 6px 14px;
     border-radius: 6px;
     cursor: pointer;
@@ -62,15 +68,45 @@ button, select {
     transition: all 0.15s ease;
 }
 
-button:hover, select:hover { background-color: #475569; }
-button.btn-accent { background-color: var(--accent); color: #000; border: none; font-weight: 700; }
-button.btn-accent:hover { background-color: var(--accent-hover); }
-button.btn-success { background-color: var(--success); color: #000; border: none; font-weight: 700; }
-button.btn-danger { background-color: var(--danger); border: none; }
-button.btn-danger:hover { background-color: #dc2626; }
+button:hover, select:hover {
+    background-color: #334155;
+    border-color: #475569;
+}
+
+button.btn-accent {
+    background-color: var(--accent);
+    color: #090d16;
+    border: none;
+    font-weight: 700;
+}
+
+button.btn-accent:hover {
+    background-color: var(--accent-hover);
+}
+
+button.btn-success {
+    background-color: var(--success);
+    color: #090d16;
+    border: none;
+    font-weight: 700;
+}
+
+button.btn-success:hover {
+    background-color: #16a34a;
+}
+
+button.btn-danger {
+    background-color: var(--danger);
+    color: #fff;
+    border: none;
+}
+
+button.btn-danger:hover {
+    background-color: #dc2626;
+}
 
 .telemetry-badge {
-    background-color: #1e293b;
+    background-color: #0d121f;
     border: 1px solid var(--border);
     padding: 4px 10px;
     border-radius: 6px;
@@ -89,7 +125,7 @@ button.btn-danger:hover { background-color: #dc2626; }
 }
 
 .sidebar {
-    width: 320px;
+    width: 310px;
     background-color: var(--panel-bg);
     border-left: 1px solid var(--border);
     padding: 15px;
@@ -107,9 +143,10 @@ button.btn-danger:hover { background-color: #dc2626; }
 }
 
 .card-title {
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-weight: 700;
     text-transform: uppercase;
+    letter-spacing: 0.05em;
     color: var(--text-muted);
     margin-bottom: 10px;
     display: flex;
@@ -119,15 +156,17 @@ button.btn-danger:hover { background-color: #dc2626; }
 
 #toast {
     position: fixed;
-    bottom: 20px;
-    right: 20px;
+    bottom: 24px;
+    right: 24px;
     background-color: var(--success);
-    color: #000;
+    color: #090d16;
     padding: 10px 20px;
     border-radius: 6px;
     font-weight: 700;
+    font-size: 0.88rem;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.25s ease;
     pointer-events: none;
     z-index: 100;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
 }

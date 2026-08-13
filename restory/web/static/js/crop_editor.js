@@ -1,5 +1,5 @@
 /**
- * restory.web.static.js.crop_editor — Paged Manga Crop Editor Canvas & Event Engine.
+ * restory.web.static.js.crop_editor — Canvas Editor with Canva-style Dragging & Dynamic Cursors.
  */
 
 let activeChapter = "01";
@@ -11,7 +11,7 @@ let imageLoaded = false;
 let rtlDirection = true;
 let selectedBoxIndex = -1;
 
-// Drag / Resize State
+// Drag & Resize State
 let isDrawing = false;
 let isDragging = false;
 let isResizing = false;
@@ -22,7 +22,7 @@ let initialBoxCoords = null;
 
 const canvas = document.getElementById('editor-canvas');
 const ctx = canvas.getContext('2d');
-const HANDLE_SIZE = 8;
+const HANDLE_RADIUS = 7;
 
 async function initEditor() {
     setupEventListeners();
@@ -115,21 +115,21 @@ function renderCanvas() {
         const isSelected = idx === selectedBoxIndex;
 
         // Box Fill & Stroke
-        ctx.fillStyle = isSelected ? 'rgba(34, 197, 94, 0.25)' : 'rgba(245, 158, 11, 0.18)';
-        ctx.strokeStyle = isSelected ? '#22c55e' : '#f59e0b';
-        ctx.lineWidth = isSelected ? 4 : 3;
+        ctx.fillStyle = isSelected ? 'rgba(56, 189, 248, 0.22)' : 'rgba(34, 197, 94, 0.16)';
+        ctx.strokeStyle = isSelected ? '#38bdf8' : '#22c55e';
+        ctx.lineWidth = isSelected ? 3 : 2;
 
         ctx.fillRect(x1, y1, w, h);
         ctx.strokeRect(x1, y1, w, h);
 
-        // Label Badge
-        ctx.fillStyle = isSelected ? '#22c55e' : '#f59e0b';
-        ctx.fillRect(x1, y1, Math.min(w, 40), 24);
-        ctx.fillStyle = '#000000';
-        ctx.font = 'bold 14px sans-serif';
-        ctx.fillText(`${idx + 1}`, x1 + 8, y1 + 17);
+        // Panel Number Badge
+        ctx.fillStyle = isSelected ? '#38bdf8' : '#22c55e';
+        ctx.fillRect(x1, y1, Math.min(w, 36), 22);
+        ctx.fillStyle = '#090d16';
+        ctx.font = 'bold 13px sans-serif';
+        ctx.fillText(`${idx + 1}`, x1 + 8, y1 + 16);
 
-        // Render Handles if selected
+        // Render Handles for selected box
         if (isSelected && !box.locked) {
             drawHandles(x1, y1, w, h);
         }
@@ -137,14 +137,14 @@ function renderCanvas() {
 }
 
 function drawHandles(x, y, w, h) {
+    const handles = getHandleCoords(x, y, w, h);
     ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#22c55e';
+    ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 2;
 
-    const handles = getHandleCoords(x, y, w, h);
     Object.values(handles).forEach(pt => {
         ctx.beginPath();
-        ctx.arc(pt.x, pt.ptY || pt.y, HANDLE_SIZE, 0, 2 * Math.PI);
+        ctx.arc(pt.x, pt.y, HANDLE_RADIUS, 0, 2 * Math.PI);
         ctx.fill();
         ctx.stroke();
     });
@@ -156,17 +156,88 @@ function getHandleCoords(x, y, w, h) {
         ne: { x: x + w, y: y },
         se: { x: x + w, y: y + h },
         sw: { x: x, y: y + h },
+        n:  { x: x + w / 2, y: y },
+        s:  { x: x + w / 2, y: y + h },
+        w:  { x: x, y: y + h / 2 },
+        e:  { x: x + w, y: y + h / 2 },
     };
 }
 
+/**
+ * Canva-style Mouse Coordinate Mapper: Clamps coordinates seamlessly even when dragging outside canvas.
+ */
 function getCanvasMousePos(e) {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    return {
-        x: Math.round((e.clientX - rect.left) * scaleX),
-        y: Math.round((e.clientY - rect.top) * scaleY)
-    };
+
+    let x = Math.round((e.clientX - rect.left) * scaleX);
+    let y = Math.round((e.clientY - rect.top) * scaleY);
+
+    // Canva-style clamping to image boundaries
+    x = Math.max(0, Math.min(x, canvas.width));
+    y = Math.max(0, Math.min(y, canvas.height));
+
+    return { x, y };
+}
+
+/**
+ * Dynamic Cursor & Icon Changes based on hover state.
+ */
+function updateDynamicCursor(pos) {
+    if (isDragging) {
+        canvas.style.cursor = 'grabbing';
+        return;
+    }
+    if (isResizing) {
+        canvas.style.cursor = getHandleCursorIcon(resizeHandle);
+        return;
+    }
+
+    const boxes = getCurrentBoxes();
+    if (selectedBoxIndex >= 0 && selectedBoxIndex < boxes.length) {
+        const b = boxes[selectedBoxIndex];
+        if (!b.locked) {
+            const x1 = Math.min(b.x1, b.x2);
+            const y1 = Math.min(b.y1, b.y2);
+            const w = Math.abs(b.x2 - b.x1);
+            const h = Math.abs(b.y2 - b.y1);
+            const handles = getHandleCoords(x1, y1, w, h);
+
+            for (const [key, pt] of Object.entries(handles)) {
+                if (Math.hypot(pos.x - pt.x, pos.y - pt.y) <= HANDLE_RADIUS * 1.6) {
+                    canvas.style.cursor = getHandleCursorIcon(key);
+                    return;
+                }
+            }
+        }
+    }
+
+    // Check box hover
+    for (let i = boxes.length - 1; i >= 0; i--) {
+        const b = boxes[i];
+        const x1 = Math.min(b.x1, b.x2);
+        const x2 = Math.max(b.x1, b.x2);
+        const y1 = Math.min(b.y1, b.y2);
+        const y2 = Math.max(b.y1, b.y2);
+
+        if (pos.x >= x1 && pos.x <= x2 && pos.y >= y1 && pos.y <= y2) {
+            canvas.style.cursor = 'grab';
+            return;
+        }
+    }
+
+    canvas.style.cursor = 'crosshair';
+}
+
+function getHandleCursorIcon(handle) {
+    switch (handle) {
+        case 'nw': case 'se': return 'nwse-resize';
+        case 'ne': case 'sw': return 'nesw-resize';
+        case 'n':  case 's':  return 'ns-resize';
+        case 'e':  case 'w':  return 'ew-resize';
+        default: return 'pointer';
+    }
 }
 
 function deleteBoxAt(pos) {
@@ -192,7 +263,7 @@ function deleteBoxAt(pos) {
 }
 
 function setupEventListeners() {
-    // Prevent default right-click context menu on canvas
+    // Right-click deletes panel box
     canvas.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         const pos = getCanvasMousePos(e);
@@ -200,7 +271,7 @@ function setupEventListeners() {
     });
 
     canvas.addEventListener('mousedown', (e) => {
-        if (e.button === 2) return; // Right click handled by contextmenu
+        if (e.button === 2) return; // Right-click handled by contextmenu
         const pos = getCanvasMousePos(e);
         const boxes = getCurrentBoxes();
 
@@ -215,7 +286,7 @@ function setupEventListeners() {
                 const handles = getHandleCoords(x1, y1, w, h);
 
                 for (const [key, pt] of Object.entries(handles)) {
-                    if (Math.hypot(pos.x - pt.x, pos.y - pt.y) <= HANDLE_SIZE * 1.5) {
+                    if (Math.hypot(pos.x - pt.x, pos.y - pt.y) <= HANDLE_RADIUS * 1.6) {
                         isResizing = true;
                         resizeHandle = key;
                         initialBoxCoords = { ...b };
@@ -252,7 +323,7 @@ function setupEventListeners() {
             renderCanvas();
             updateSidebar();
         } else {
-            // Start drawing new box
+            // Start drawing new Canva-style box
             selectedBoxIndex = -1;
             isDrawing = true;
             dragStartX = pos.x;
@@ -263,8 +334,11 @@ function setupEventListeners() {
         }
     });
 
-    canvas.addEventListener('mousemove', (e) => {
+    window.addEventListener('mousemove', (e) => {
+        if (!imageLoaded) return;
         const pos = getCanvasMousePos(e);
+        updateDynamicCursor(pos);
+
         const boxes = getCurrentBoxes();
 
         if (isDrawing && selectedBoxIndex >= 0) {
@@ -287,6 +361,10 @@ function setupEventListeners() {
             if (resizeHandle === 'ne') { b.x2 = pos.x; b.y1 = pos.y; }
             if (resizeHandle === 'se') { b.x2 = pos.x; b.y2 = pos.y; }
             if (resizeHandle === 'sw') { b.x1 = pos.x; b.y2 = pos.y; }
+            if (resizeHandle === 'n')  { b.y1 = pos.y; }
+            if (resizeHandle === 's')  { b.y2 = pos.y; }
+            if (resizeHandle === 'w')  { b.x1 = pos.x; }
+            if (resizeHandle === 'e')  { b.x2 = pos.x; }
             renderCanvas();
         }
     });
@@ -297,7 +375,6 @@ function setupEventListeners() {
             isDragging = false;
             isResizing = false;
 
-            // Fix inverted box coordinates
             if (selectedBoxIndex >= 0) {
                 const boxes = getCurrentBoxes();
                 const b = boxes[selectedBoxIndex];
@@ -306,9 +383,8 @@ function setupEventListeners() {
                     const x2 = Math.max(b.x1, b.x2);
                     const y1 = Math.min(b.y1, b.y2);
                     const y2 = Math.max(b.y1, b.y2);
-                    
-                    // Filter out tiny accidental click boxes
-                    if (x2 - x1 < 20 || y2 - y1 < 20) {
+
+                    if (x2 - x1 < 18 || y2 - y1 < 18) {
                         boxes.splice(selectedBoxIndex, 1);
                         selectedBoxIndex = -1;
                     } else {
@@ -323,9 +399,9 @@ function setupEventListeners() {
 
     // Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
 
-        // Key 'F': Clear All & Full-Page Box
+        // Key 'F': Set Single Full-Page Box
         if (e.key === 'f' || e.key === 'F') {
             e.preventDefault();
             addFullPageBox();
@@ -437,7 +513,7 @@ async function runRedetect() {
     const engine = document.getElementById('engine-select').value;
     const filename = pageList[currentPageIndex].filename;
     
-    showToast(`Running ${engine.toUpperCase()} detection...`);
+    showToast(`Running ${engine.toUpperCase()} detection live...`);
     try {
         const res = await fetch('/api/redetect', {
             method: 'POST',
@@ -449,7 +525,7 @@ async function runRedetect() {
             const stem = pageList[currentPageIndex].stem;
             boxesData[stem] = data.boxes || [];
             selectedBoxIndex = -1;
-            showToast('Page re-detected!');
+            showToast('Page re-detected live!');
             renderCanvas();
             updateSidebar();
         }

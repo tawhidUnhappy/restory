@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Paged Crop & Layer Editor — restory</title>
+    <title>Paged Crop Editor — restory</title>
     <link rel="stylesheet" href="/static/css/common.css">
     <link rel="stylesheet" href="/static/css/crop_editor.css">
 </head>
 <body>
     <header>
         <div class="header-title">
-            <span>restory Crop Editor</span>
+            <span>restory <span class="brand-accent">Crop Editor</span></span>
             <div class="telemetry-badge" id="telemetry-banner">
                 <span class="status-dot"></span>
                 <span id="telemetry-gpu">GPU: Loading...</span>
@@ -18,22 +18,22 @@
         </div>
 
         <div class="controls-group">
-            <label for="chapter-select">Chapter:</label>
+            <label for="chapter-select" style="font-size:0.85rem; color:var(--text-muted);">Chapter:</label>
             <select id="chapter-select" onchange="switchChapter(this.value)"></select>
 
             <button onclick="prevPage()">&larr; Prev (A)</button>
-            <span id="page-indicator" style="font-weight:600; min-width:80px; text-align:center;">Page 1 / 1</span>
+            <span id="page-indicator" style="font-size:0.85rem; font-weight:600; min-width:80px; text-align:center;">Page 1 / 1</span>
             <button onclick="nextPage()">Next (D) &rarr;</button>
         </div>
 
         <div class="controls-group">
-            <label for="engine-select">Detector:</label>
+            <label for="engine-select" style="font-size:0.85rem; color:var(--text-muted);">Detector Engine:</label>
             <select id="engine-select">
-                <option value="hybrid">Hybrid (AI + Snap)</option>
-                <option value="magi">MAGI v3 (AI)</option>
-                <option value="heuristic">CV Heuristic (Fast)</option>
+                <option value="japanese">Japanese Manga (Python CV)</option>
+                <option value="magi">MAGI v3 (AI Transformer)</option>
+                <option value="webtoon">Webtoon Strip Cut</option>
             </select>
-            <button onclick="runRedetect()">Re-Detect Page</button>
+            <button onclick="runRedetect()">Re-Detect Live</button>
             <button class="btn-accent" onclick="saveAndRecrop()">Save & Re-Crop (Ctrl+S)</button>
             <button class="btn-success" onclick="finishAndContinue()">Done & Continue Pipeline &rarr;</button>
         </div>
@@ -47,8 +47,8 @@
         <div class="sidebar">
             <div class="card">
                 <div class="card-title">Reading Direction</div>
-                <div style="display:flex; gap:15px;">
-                    <label><input type="radio" name="rtl" value="true" id="rtl-true" checked onchange="updateRtl(true)"> RTL (Manga)</label>
+                <div style="display:flex; gap:15px; font-size:0.85rem;">
+                    <label><input type="radio" name="rtl" value="true" id="rtl-true" checked onchange="updateRtl(true)"> RTL (Japanese Manga)</label>
                     <label><input type="radio" name="rtl" value="false" id="rtl-false" onchange="updateRtl(false)"> LTR (Webtoon)</label>
                 </div>
             </div>
@@ -56,19 +56,20 @@
             <div class="card">
                 <div class="card-title">
                     <span>Panel Layer Stack</span>
-                    <button style="padding: 2px 6px; font-size:0.75rem;" onclick="addFullPageBox()">+ Full Page (F)</button>
+                    <button style="padding: 2px 7px; font-size:0.75rem;" onclick="addFullPageBox()">+ Full Page (F)</button>
                 </div>
                 <ul class="layer-list" id="layer-list"></ul>
             </div>
 
             <div class="card">
-                <div class="card-title">Shortcuts</div>
+                <div class="card-title">Shortcuts & Controls</div>
                 <div class="hotkey-list">
+                    <p><kbd>Drag</kbd> : Draw Box (Canva style)</p>
                     <p><kbd>Right-Click</kbd> : Delete Clicked Panel</p>
-                    <p><kbd>F</kbd> : Clear All & Full-Page Box</p>
+                    <p><kbd>F</kbd> : Set Single Full-Page Box</p>
                     <p><kbd>A</kbd> / <kbd>&larr;</kbd> : Previous Page</p>
                     <p><kbd>D</kbd> / <kbd>&rarr;</kbd> : Next Page</p>
-                    <p><kbd>Del</kbd> / <kbd>Backspace</kbd> : Delete Selected</p>
+                    <p><kbd>Del</kbd> : Delete Selected Layer</p>
                     <p><kbd>Ctrl+S</kbd> : Save & Re-Crop</p>
                 </div>
             </div>

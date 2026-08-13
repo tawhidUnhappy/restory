@@ -13,10 +13,9 @@ from PIL import Image, ImageDraw
 from restory.config import load_project_manga_json, save_project_manga_json
 from restory.layout import project_dir, filter_item_dirs
 from restory.detectors import (
-    detect_heuristic,
+    detect_japanese_paged,
     detect_magi_batch,
     detect_webtoon,
-    detect_hybrid_batch,
     sort_reading_order,
     clamp_box,
     collect_images,
@@ -147,7 +146,6 @@ def style_detect_main(argv: list[str] | None = None) -> int:
     median_ratio = float(np.median(ratios))
     verdict = "webtoon" if median_ratio >= 2.0 else "paged"
 
-    # Crucial Fix: Save format verdict into manga.json
     manga_ledger = load_project_manga_json(manga_name)
     manga_ledger["format"] = verdict
     save_project_manga_json(manga_name, manga_ledger)
@@ -165,16 +163,15 @@ def style_detect_main(argv: list[str] | None = None) -> int:
     else:
         print(f"Format Verdict for '{manga_name}': {verdict.upper()} (Median Ratio: {res['median_ratio']}:1)")
         print(f"[OK] Format updated in manga.json -> format = '{verdict}'")
-        print(f"Recommended Command: restory {res['recommended_command']}")
     return 0
 
 
 def page_split_main(argv: list[str] | None = None) -> int:
-    """Run batch detection engine on paged manga and save ONLY work/boxes.json metadata."""
+    """Run batch detection engine on paged manga and save metadata."""
     parser = argparse.ArgumentParser(prog="restory page-split")
     parser.add_argument("--project-root", type=Path, required=True)
     parser.add_argument("--items", nargs="*")
-    parser.add_argument("--engine", choices=["heuristic", "magi", "hybrid"], default="heuristic")
+    parser.add_argument("--engine", choices=["japanese", "magi", "webtoon"], default="japanese")
     parser.add_argument("--render", action="store_true", help="Execute physical panel cropping immediately.")
     args = parser.parse_args(argv)
 
@@ -191,23 +188,25 @@ def page_split_main(argv: list[str] | None = None) -> int:
         if not pages:
             continue
 
-        print(f"--> Page-Splitting Chapter '{ch_dir.name}' ({len(pages)} pages) using engine '{args.engine}' [GPU Batch Pass]...")
+        print(f"--> Page-Splitting Chapter '{ch_dir.name}' ({len(pages)} pages) using engine '{args.engine}'...")
         boxes_dict = {"version": 2, "pages": {}}
 
-        # Batch GPU execution
         if args.engine == "magi":
             batch_res = detect_magi_batch(pages)
-        elif args.engine == "hybrid":
-            batch_res = detect_hybrid_batch(pages)
+        elif args.engine == "webtoon":
+            webtoon_meta = detect_webtoon(ch_dir)
+            save_chapter_boxes(ch_dir, webtoon_meta)
+            print(f"  [OK] Saved webtoon metadata -> {get_boxes_json_path(ch_dir)}")
+            continue
         else:
+            # Standard Japanese Paged Manga Python CV logic
             batch_res = {}
             for p in pages:
                 with Image.open(p) as im:
-                    batch_res[p] = detect_heuristic(im)
+                    batch_res[p] = detect_japanese_paged(im)
 
         for p in pages:
-            stem = p.stem
-            boxes_dict["pages"][stem] = batch_res.get(p, [])
+            boxes_dict["pages"][p.stem] = batch_res.get(p, [])
 
         save_chapter_boxes(ch_dir, boxes_dict)
         print(f"  [OK] Saved box metadata -> {get_boxes_json_path(ch_dir)}")
@@ -216,7 +215,7 @@ def page_split_main(argv: list[str] | None = None) -> int:
             count = recrop_chapter_from_boxes(ch_dir, boxes_dict, rtl=rtl)
             print(f"  [OK] Physical render complete ({count} panels cropped).")
 
-    print("\nDeferred page-splitting completed successfully!")
+    print("\nPage-splitting completed successfully!")
     return 0
 
 

@@ -1,4 +1,4 @@
-"""restory.web.server_crop — HTTP server and REST API for Paged Manga Crop Editor."""
+"""restory.web.server_crop — HTTP server and REST API for Paged Manga Crop Editor with Live Engine Switching."""
 
 from __future__ import annotations
 
@@ -14,13 +14,13 @@ from urllib.parse import parse_qs, urlparse
 from PIL import Image
 
 from restory.isolation import get_install_root
-from restory.layout import project_dir, project_manga_json, normalize_chapter_name
+from restory.layout import normalize_chapter_name
 from restory.tools_manager import check_gpu
 from restory.detectors import (
     collect_images,
-    detect_heuristic,
+    detect_japanese_paged,
     detect_magi,
-    detect_hybrid,
+    detect_webtoon,
     sort_reading_order,
 )
 from restory.panels import load_chapter_boxes, recrop_chapter_from_boxes, save_chapter_boxes
@@ -60,7 +60,7 @@ class CropEditorHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/api/telemetry":
             gpu = check_gpu()
-            self._send_json({"product": "restory", "gpu": gpu, "active_engine": "heuristic"})
+            self._send_json({"product": "restory", "gpu": gpu, "active_engine": "japanese"})
             return
 
         if path == "/api/chapter-data":
@@ -126,7 +126,7 @@ class CropEditorHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/redetect":
             ch = data.get("chapter", self.active_item)
             filename = data.get("filename")
-            engine = data.get("engine", "heuristic")
+            engine = data.get("engine", "japanese")
 
             ch_norm = normalize_chapter_name(ch)
             img_path = self.project_root / ch_norm / "download" / filename
@@ -139,13 +139,24 @@ class CropEditorHandler(http.server.BaseHTTPRequestHandler):
 
             if engine == "magi":
                 raw_boxes = detect_magi(img_path)
-            elif engine == "hybrid":
-                raw_boxes = detect_hybrid(img_path)
-            else:
+            elif engine == "webtoon":
+                ch_dir = img_path.parent.parent
+                w_meta = detect_webtoon(ch_dir)
+                raw_boxes = []
                 with Image.open(img_path) as im:
-                    raw_boxes = detect_heuristic(im)
+                    w, h = im.size
+                cuts = w_meta.get("cuts", [])
+                for idx in range(len(cuts) - 1):
+                    raw_boxes.append({
+                        "x1": 0, "y1": cuts[idx], "x2": w, "y2": cuts[idx + 1],
+                        "z_index": idx, "type": "rectangle", "locked": False, "visible": True, "label": "webtoon_strip"
+                    })
+            else:
+                # Japanese Paged Manga Python Logic
+                with Image.open(img_path) as im:
+                    raw_boxes = detect_japanese_paged(im)
 
-            self._send_json({"status": "ok", "boxes": raw_boxes})
+            self._send_json({"status": "ok", "boxes": raw_boxes, "engine": engine})
             return
 
         if path == "/api/sort-boxes":
@@ -192,7 +203,7 @@ def run_crop_server(project_root: Path, item: str = "01", port: int = 8000, open
     url = f"http://localhost:{port}"
 
     print(f"\n============================================================")
-    print(f" restory Paged Manga Crop Editor running at: {url}")
+    print(f" restory Crop & Layer Editor running at: {url}")
     print(f" Press 'Done & Continue Pipeline' in browser to finish.")
     print(f"============================================================\n")
 
