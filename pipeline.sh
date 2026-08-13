@@ -41,7 +41,7 @@ try:
     print(f'{fmt}|{title}')
 except Exception:
     print('paged|$p_name')
-" 2>/devnull || echo "paged|$p_name"
+" 2>/dev/null || echo "paged|$p_name"
     else
         echo "paged|$p_name"
     fi
