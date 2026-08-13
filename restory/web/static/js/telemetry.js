@@ -1,27 +1,23 @@
 /**
- * restory.telemetry — Hardware status and system readiness banner fetcher.
+ * restory.web.static.js.telemetry — Telemetry polling script.
  */
 
-async function initTelemetry() {
+async function pollTelemetry() {
     try {
-        let res = await fetch("/api/telemetry");
-        if (!res.ok) return;
-        let data = await res.json();
-        let gpu = data.gpu || {};
-
-        let bannerEl = document.getElementById("telemetry-gpu");
-        if (bannerEl) {
-            if (gpu.cuda) {
-                bannerEl.textContent = `GPU: CUDA (${gpu.device_name || 'NVIDIA'})`;
-            } else if (gpu.backend === "mps") {
-                bannerEl.textContent = "GPU: Apple Silicon MPS";
-            } else {
-                bannerEl.textContent = "Hardware: CPU Mode";
-            }
+        const resp = await fetch('/api/telemetry');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const gpuEl = document.getElementById('telemetry-gpu');
+        if (gpuEl && data.gpu) {
+            const name = data.gpu.device_name || data.gpu.backend || 'CPU';
+            gpuEl.textContent = `GPU: ${name}`;
         }
     } catch (err) {
-        console.warn("Telemetry fetch failed:", err);
+        console.warn('Telemetry fetch failed:', err);
     }
 }
 
-document.addEventListener("DOMContentLoaded", initTelemetry);
+document.addEventListener('DOMContentLoaded', () => {
+    pollTelemetry();
+    setInterval(pollTelemetry, 15000);
+});

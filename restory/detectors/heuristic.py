@@ -47,7 +47,7 @@ def clamp_box(raw: list | dict, w: int, h: int) -> dict | None:
     }
 
 
-def is_blank_or_sliver(img_crop: Image.Image, min_dim: int = 120, max_ratio: float = 8.0) -> bool:
+def is_blank_or_sliver(img_crop: Image.Image, min_dim: int = 100, max_ratio: float = 9.0) -> bool:
     """Return True if an image crop is a sliver, extreme aspect ratio, or solid color."""
     w, h = img_crop.size
     if w < min_dim or h < min_dim:
@@ -59,7 +59,7 @@ def is_blank_or_sliver(img_crop: Image.Image, min_dim: int = 120, max_ratio: flo
 
     gray = np.array(img_crop.convert("L"))
     std_dev = float(gray.std())
-    if std_dev < 8.0:
+    if std_dev < 6.0:
         return True
 
     return False
@@ -102,7 +102,7 @@ def sort_reading_order(boxes: list[dict], rtl: bool = True) -> list[dict]:
             unvisited = [i for i in range(n) if i not in visited]
             min_deg = min(in_deg[i] for i in unvisited)
             cands = [i for i in unvisited if in_deg[i] == min_deg]
-        cands.sort(key=lambda idx: (int(cy(boxes[idx]) // 10), -cx(boxes[idx]) if rtl else cx(boxes[idx])))
+        cands.sort(key=lambda idx: (int(cy(boxes[idx]) // 12), -cx(boxes[idx]) if rtl else cx(boxes[idx])))
         best = cands[0]
         visited.add(best)
         result.append(boxes[best])
@@ -121,8 +121,8 @@ def detect_heuristic(img: Image.Image) -> list[dict]:
     if w < 100 or h < 100:
         return [{"x1": 0, "y1": 0, "x2": int(w), "y2": int(h), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": ""}]
 
-    top_margin = int(h * 0.03)
-    bot_margin = int(h * 0.96)
+    top_margin = int(h * 0.02)
+    bot_margin = int(h * 0.98)
     left_margin = int(w * 0.02)
     right_margin = int(w * 0.98)
 
@@ -130,7 +130,7 @@ def detect_heuristic(img: Image.Image) -> list[dict]:
     border_pixels = np.concatenate([gray[top_margin:bot_margin, left_margin], gray[top_margin:bot_margin, right_margin - 1]])
     is_white_bg = float(np.median(border_pixels)) > 128.0
 
-    binary = (gray < 225).astype(np.uint8) if is_white_bg else (gray > 30).astype(np.uint8)
+    binary = (gray < 230).astype(np.uint8) if is_white_bg else (gray > 25).astype(np.uint8)
     binary[:top_margin, :] = 0
     binary[bot_margin:, :] = 0
     binary[:, :left_margin] = 0
@@ -138,16 +138,16 @@ def detect_heuristic(img: Image.Image) -> list[dict]:
 
     def xy_cut(x1: int, y1: int, x2: int, y2: int, depth: int = 0) -> list[dict]:
         rw, rh = x2 - x1, y2 - y1
-        if depth > 8 or rw < 120 or rh < 120:
+        if depth > 8 or rw < 90 or rh < 90:
             return [{"x1": int(x1), "y1": int(y1), "x2": int(x2), "y2": int(y2), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": ""}]
 
         region = binary[y1:y2, x1:x2]
         row_sums = region.sum(axis=1)
         col_sums = region.sum(axis=0)
 
-        row_thresh = max(4, int(rw * 0.035))
+        row_thresh = max(2, int(rw * 0.025))
         empty_rows = row_sums <= row_thresh
-        min_gutter_h = max(6, int(rh * 0.012))
+        min_gutter_h = max(4, int(rh * 0.008))
 
         h_cuts = []
         in_g = False
@@ -162,7 +162,7 @@ def detect_heuristic(img: Image.Image) -> list[dict]:
                     in_g = False
                     if (r - g_start) >= min_gutter_h:
                         cut_y = y1 + (g_start + r) // 2
-                        if cut_y - y1 > 100 and y2 - cut_y > 100:
+                        if cut_y - y1 > 80 and y2 - cut_y > 80:
                             h_cuts.append(int(cut_y))
 
         if h_cuts:
@@ -174,9 +174,9 @@ def detect_heuristic(img: Image.Image) -> list[dict]:
             results.extend(xy_cut(x1, last_y, x2, y2, depth + 1))
             return results
 
-        col_thresh = max(4, int(rh * 0.035))
+        col_thresh = max(2, int(rh * 0.025))
         empty_cols = col_sums <= col_thresh
-        min_gutter_w = max(6, int(rw * 0.012))
+        min_gutter_w = max(4, int(rw * 0.008))
 
         v_cuts = []
         in_g = False
@@ -191,7 +191,7 @@ def detect_heuristic(img: Image.Image) -> list[dict]:
                     in_g = False
                     if (c - g_start) >= min_gutter_w:
                         cut_x = x1 + (g_start + c) // 2
-                        if cut_x - x1 > 100 and x2 - cut_x > 100:
+                        if cut_x - x1 > 80 and x2 - cut_x > 80:
                             v_cuts.append(int(cut_x))
 
         if v_cuts:
@@ -208,10 +208,10 @@ def detect_heuristic(img: Image.Image) -> list[dict]:
         if len(c_rows) > 0 and len(c_cols) > 0:
             tx1, ty1 = x1 + int(c_cols[0]), y1 + int(c_rows[0])
             tx2, ty2 = x1 + int(c_cols[-1]) + 1, y1 + int(c_rows[-1]) + 1
-            pad = 6
+            pad = 4
             tx1, ty1 = max(0, tx1 - pad), max(0, ty1 - pad)
             tx2, ty2 = min(w, tx2 + pad), min(h, ty2 + pad)
-            if (tx2 - tx1) >= 120 and (ty2 - ty1) >= 120:
+            if (tx2 - tx1) >= 90 and (ty2 - ty1) >= 90:
                 return [{"x1": int(tx1), "y1": int(ty1), "x2": int(tx2), "y2": int(ty2), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": ""}]
 
         return [{"x1": int(x1), "y1": int(y1), "x2": int(x2), "y2": int(y2), "z_index": 0, "type": "rectangle", "locked": False, "visible": True, "label": ""}]
@@ -223,7 +223,7 @@ def detect_heuristic(img: Image.Image) -> list[dict]:
     for b in raw_boxes:
         bw, bh = b["x2"] - b["x1"], b["y2"] - b["y1"]
         box_area = bw * bh
-        if box_area >= page_area * 0.03 and bw >= 120 and bh >= 120:
+        if box_area >= page_area * 0.02 and bw >= 90 and bh >= 90:
             crop = img.crop((b["x1"], b["y1"], b["x2"], b["y2"]))
             if not is_blank_or_sliver(crop):
                 valid_boxes.append(b)

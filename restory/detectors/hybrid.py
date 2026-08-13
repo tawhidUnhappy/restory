@@ -1,4 +1,4 @@
-"""restory.detectors.hybrid — Combined MAGI v3 AI proposals with OpenCV gutter snapping."""
+"""restory.detectors.hybrid — Combined MAGI v3 AI proposals with OpenCV gutter snapping and container box disintegration."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from restory.detectors.magi import detect_magi
+from restory.detectors.magi import detect_magi_batch
 from restory.detectors.heuristic import (
     detect_heuristic,
     clamp_box,
@@ -35,7 +35,7 @@ def _iou(b1: dict, b2: dict) -> float:
     return inter / float(union) if union > 0 else 0.0
 
 
-def snap_box_edges(raw_box: dict, gray: np.ndarray, search_win: int = 20) -> dict:
+def snap_box_edges(raw_box: dict, gray: np.ndarray, search_win: int = 18) -> dict:
     """Refine box coordinates by snapping to nearest whitespace / gutter gradient minimums."""
     h, w = gray.shape
     x1, y1, x2, y2 = raw_box["x1"], raw_box["y1"], raw_box["x2"], raw_box["y2"]
@@ -77,97 +77,103 @@ def snap_box_edges(raw_box: dict, gray: np.ndarray, search_win: int = 20) -> dic
     return res
 
 
-def detect_hybrid(img_path: Path) -> list[dict]:
-    """Clever Hybrid Panel Detector: Combines AI proposals (MAGI v3) with CV projection profiling.
+def _disintegrate_mega_containers(boxes: list[dict], page_w: int, page_h: int) -> list[dict]:
+    """Remove giant outer container boxes that enclose multiple smaller valid panel boxes."""
+    if len(boxes) <= 1:
+        return boxes
 
-    Logic:
-    1. Obtains AI proposals (MAGI v3 or fallback).
-    2. Runs OpenCV heuristic cuts on the source image.
-    3. Snaps AI box edges to local whitespace/gutter boundaries.
-    4. If an AI box is oversized and contains multiple CV panels, splits it along CV gutters.
-    5. Rescues CV panels missed by AI if they are uncovered.
-    6. Filters blanks/slivers and removes heavy duplicates via IoU.
-    7. Clamps and sorts in reading order.
-    """
-    with Image.open(img_path) as img:
-        img_rgb = img.convert("RGB")
-        w, h = img_rgb.size
-        gray = np.array(img_rgb.convert("L"))
+    filtered = []
+    for i, outer in enumerate(boxes):
+        outer_area = _box_area(outer)
+        children = []
 
-    # 1. AI Proposals
-    ai_boxes = detect_magi(img_path)
+        for j, inner in enumerate(boxes):
+            if i == j:
+                continue
+            inner_area = _box_area(inner)
 
-    # 2. CV Proposals
-    cv_boxes = detect_heuristic(img_rgb)
+            # Check if inner box is substantially inside outer box
+            x1 = max(outer["x1"], inner["x1"])
+            y1 = max(outer["y1"], inner["y1"])
+            x2 = min(outer["x2"], inner["x2"])
+            y2 = min(outer["y2"], inner["y2"])
+            inter_area = max(0, x2 - x1) * max(0, y2 - y1)
 
-    candidates: list[dict] = []
+            if inner_area > 0 and (inter_area / float(inner_area)) > 0.82 and inner_area < 0.85 * outer_area:
+                children.append(inner)
 
-    # 3. Refine & Snap AI Boxes
-    for b in ai_boxes:
-        clamped = clamp_box(b, w, h)
-        if not clamped:
+        # If box contains 2+ child panel boxes, discard the giant container box
+        if len(children) >= 2 and outer_area > 0.25 * (page_w * page_h):
             continue
 
-        snapped = snap_box_edges(clamped, gray, search_win=18)
-        snapped["label"] = "hybrid_ai_snapped"
+        filtered.append(outer)
 
-        # Check if this AI box is a mega-container covering multiple CV boxes
-        ai_area = _box_area(snapped)
-        sub_cv = []
+    return filtered if filtered else boxes
+
+
+def detect_hybrid_batch(img_paths: list[Path]) -> dict[Path, list[dict]]:
+    """Batch CUDA Hybrid Detector: Combines AI proposals with CV projection and container disintegration."""
+    ai_batch_results = detect_magi_batch(img_paths)
+    out = {}
+
+    for img_path in img_paths:
+        with Image.open(img_path) as img:
+            img_rgb = img.convert("RGB")
+            w, h = img_rgb.size
+            gray = np.array(img_rgb.convert("L"))
+
+        ai_boxes = ai_batch_results.get(img_path, [])
+        cv_boxes = detect_heuristic(img_rgb)
+
+        candidates: list[dict] = []
+
+        for b in ai_boxes:
+            clamped = clamp_box(b, w, h)
+            if not clamped:
+                continue
+            snapped = snap_box_edges(clamped, gray, search_win=15)
+            snapped["label"] = "hybrid_ai_snapped"
+            candidates.append(snapped)
+
+        # Rescue CV panels missed by AI
         for cb in cv_boxes:
             cb_clamped = clamp_box(cb, w, h)
             if not cb_clamped:
                 continue
-            x1 = max(snapped["x1"], cb_clamped["x1"])
-            y1 = max(snapped["y1"], cb_clamped["y1"])
-            x2 = min(snapped["x2"], cb_clamped["x2"])
-            y2 = min(snapped["y2"], cb_clamped["y2"])
-            inter = max(0, x2 - x1) * max(0, y2 - y1)
-            if inter > 0.80 * _box_area(cb_clamped):
-                sub_cv.append(cb_clamped)
+            max_overlap = max((_iou(cb_clamped, cand) for cand in candidates), default=0.0)
+            if max_overlap < 0.25:
+                cb_snapped = snap_box_edges(cb_clamped, gray, search_win=12)
+                cb_snapped["label"] = "hybrid_rescued_cv"
+                candidates.append(cb_snapped)
 
-        if len(sub_cv) >= 2 and ai_area > 0.35 * (w * h):
-            # Split AI container into its CV constituent panels
-            for scb in sub_cv:
-                scb_snapped = snap_box_edges(scb, gray, search_win=12)
-                scb_snapped["label"] = "hybrid_split"
-                candidates.append(scb_snapped)
-        else:
-            candidates.append(snapped)
+        # Disintegrate giant mega-containers
+        disintegrated = _disintegrate_mega_containers(candidates, w, h)
 
-    # 4. Rescue Missed CV Panels
-    for cb in cv_boxes:
-        cb_clamped = clamp_box(cb, w, h)
-        if not cb_clamped:
-            continue
+        # Deduplicate & filter blanks
+        valid_boxes: list[dict] = []
+        for cand in disintegrated:
+            crop = img_rgb.crop((cand["x1"], cand["y1"], cand["x2"], cand["y2"]))
+            if is_blank_or_sliver(crop):
+                continue
 
-        # Check overlap with existing candidates
-        max_overlap = max((_iou(cb_clamped, cand) for cand in candidates), default=0.0)
-        if max_overlap < 0.25:
-            # Uncovered panel detected by CV
-            cb_snapped = snap_box_edges(cb_clamped, gray, search_win=12)
-            cb_snapped["label"] = "hybrid_rescued_cv"
-            candidates.append(cb_snapped)
+            duplicate = False
+            for existing in valid_boxes:
+                if _iou(cand, existing) > 0.55:
+                    duplicate = True
+                    break
 
-    # 5. Filter out blanks/slivers and deduplicate via IoU
-    valid_boxes: list[dict] = []
-    for cand in candidates:
-        crop = img_rgb.crop((cand["x1"], cand["y1"], cand["x2"], cand["y2"]))
-        if is_blank_or_sliver(crop):
-            continue
+            if not duplicate:
+                valid_boxes.append(cand)
 
-        # Non-Maximum Suppression (IoU > 0.60)
-        duplicate = False
-        for existing in valid_boxes:
-            if _iou(cand, existing) > 0.60:
-                duplicate = True
-                break
+        if not valid_boxes:
+            valid_boxes = [b for cb in cv_boxes if (b := clamp_box(cb, w, h))]
 
-        if not duplicate:
-            valid_boxes.append(cand)
+        out[img_path] = valid_boxes
 
-    # If no valid boxes survived, fallback to CV boxes
-    if not valid_boxes:
-        valid_boxes = [b for cb in cv_boxes if (b := clamp_box(cb, w, h))]
+    return out
 
-    return valid_boxes
+
+def detect_hybrid(img_path: Path) -> list[dict]:
+    """Single image wrapper around detect_hybrid_batch."""
+    res = detect_hybrid_batch([img_path])
+    return res.get(img_path, [])

@@ -10,13 +10,13 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-from restory.config import load_project_manga_json
+from restory.config import load_project_manga_json, save_project_manga_json
 from restory.layout import project_dir, filter_item_dirs
 from restory.detectors import (
     detect_heuristic,
-    detect_magi,
+    detect_magi_batch,
     detect_webtoon,
-    detect_hybrid,
+    detect_hybrid_batch,
     sort_reading_order,
     clamp_box,
     collect_images,
@@ -113,7 +113,7 @@ def recrop_chapter_from_boxes(ch_dir: Path, boxes_data: dict, rtl: bool = True) 
 
 
 def style_detect_main(argv: list[str] | None = None) -> int:
-    """CLI tool to detect format type (paged vs webtoon)."""
+    """CLI tool to detect format type (paged vs webtoon) and record it in manga.json."""
     parser = argparse.ArgumentParser(prog="restory style-detect")
     parser.add_argument("--project-root", type=Path, required=True)
     parser.add_argument("--items", nargs="*")
@@ -147,6 +147,11 @@ def style_detect_main(argv: list[str] | None = None) -> int:
     median_ratio = float(np.median(ratios))
     verdict = "webtoon" if median_ratio >= 2.0 else "paged"
 
+    # Crucial Fix: Save format verdict into manga.json
+    manga_ledger = load_project_manga_json(manga_name)
+    manga_ledger["format"] = verdict
+    save_project_manga_json(manga_name, manga_ledger)
+
     res = {
         "manga_name": manga_name,
         "images_measured": len(ratios),
@@ -159,12 +164,13 @@ def style_detect_main(argv: list[str] | None = None) -> int:
         print(json.dumps(res, ensure_ascii=False))
     else:
         print(f"Format Verdict for '{manga_name}': {verdict.upper()} (Median Ratio: {res['median_ratio']}:1)")
+        print(f"[OK] Format updated in manga.json -> format = '{verdict}'")
         print(f"Recommended Command: restory {res['recommended_command']}")
     return 0
 
 
 def page_split_main(argv: list[str] | None = None) -> int:
-    """Run detection engine on paged manga and save ONLY work/boxes.json metadata."""
+    """Run batch detection engine on paged manga and save ONLY work/boxes.json metadata."""
     parser = argparse.ArgumentParser(prog="restory page-split")
     parser.add_argument("--project-root", type=Path, required=True)
     parser.add_argument("--items", nargs="*")
@@ -185,20 +191,23 @@ def page_split_main(argv: list[str] | None = None) -> int:
         if not pages:
             continue
 
-        print(f"--> Page-Splitting Chapter '{ch_dir.name}' using engine '{args.engine}'...")
+        print(f"--> Page-Splitting Chapter '{ch_dir.name}' ({len(pages)} pages) using engine '{args.engine}' [GPU Batch Pass]...")
         boxes_dict = {"version": 2, "pages": {}}
 
-        for page_no, page_path in enumerate(pages, start=1):
-            stem = page_path.stem
-            if args.engine == "magi":
-                raw_boxes = detect_magi(page_path)
-            elif args.engine == "hybrid":
-                raw_boxes = detect_hybrid(page_path)
-            else:
-                with Image.open(page_path) as im:
-                    raw_boxes = detect_heuristic(im)
+        # Batch GPU execution
+        if args.engine == "magi":
+            batch_res = detect_magi_batch(pages)
+        elif args.engine == "hybrid":
+            batch_res = detect_hybrid_batch(pages)
+        else:
+            batch_res = {}
+            for p in pages:
+                with Image.open(p) as im:
+                    batch_res[p] = detect_heuristic(im)
 
-            boxes_dict["pages"][stem] = raw_boxes
+        for p in pages:
+            stem = p.stem
+            boxes_dict["pages"][stem] = batch_res.get(p, [])
 
         save_chapter_boxes(ch_dir, boxes_dict)
         print(f"  [OK] Saved box metadata -> {get_boxes_json_path(ch_dir)}")

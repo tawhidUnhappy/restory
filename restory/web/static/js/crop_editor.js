@@ -1,340 +1,493 @@
 /**
- * restory.crop_editor — Interactive HTML5 canvas editor for Paged Manga panel bounding boxes.
+ * restory.web.static.js.crop_editor — Paged Manga Crop Editor Canvas & Event Engine.
  */
 
-let chaptersData = [];
-let currentChapter = "";
-let currentPageIdx = 0;
-let pagesData = [];
-let boxesData = {};
-let isRtl = true;
-
-let canvas = document.getElementById("editor-canvas");
-let ctx = canvas.getContext("2d");
+let activeChapter = "01";
+let pageList = [];
+let currentPageIndex = 0;
+let boxesData = {}; // stem -> array of boxes
 let currentImage = new Image();
+let imageLoaded = false;
+let rtlDirection = true;
+let selectedBoxIndex = -1;
 
-let selectedBoxIdx = -1;
+// Drag / Resize State
 let isDrawing = false;
 let isDragging = false;
 let isResizing = false;
-let startX = 0, startY = 0;
-let resizeHandleIdx = -1;
-const HANDLE_SIZE = 10;
+let resizeHandle = null;
+let dragStartX = 0;
+let dragStartY = 0;
+let initialBoxCoords = null;
 
-async function init() {
-    let res = await fetch("/api/chapter-data");
-    let data = await res.json();
-    chaptersData = data.chapters || [];
-    currentChapter = data.active_chapter || "01";
-    isRtl = data.rtl !== false;
+const canvas = document.getElementById('editor-canvas');
+const ctx = canvas.getContext('2d');
+const HANDLE_SIZE = 8;
 
-    let select = document.getElementById("chapter-select");
-    select.innerHTML = "";
-    chaptersData.forEach(ch => {
-        let opt = document.createElement("option");
-        opt.value = ch;
-        opt.textContent = `Chapter ${ch}`;
-        if (ch === currentChapter) opt.selected = true;
-        select.appendChild(opt);
-    });
-
-    await loadChapter(currentChapter);
-    setupCanvasEvents();
-    setupKeyEvents();
+async function initEditor() {
+    setupEventListeners();
+    await fetchChapterData();
+    await fetchPageData();
 }
 
-async function loadChapter(ch) {
-    currentChapter = ch;
-    let res = await fetch(`/api/page-data?chapter=${ch}`);
-    let data = await res.json();
-    pagesData = data.pages || [];
-    boxesData = data.boxes || { pages: {} };
-    currentPageIdx = 0;
-    loadCurrentPage();
+async function fetchChapterData() {
+    try {
+        const res = await fetch('/api/chapter-data');
+        const data = await res.json();
+        rtlDirection = data.rtl !== false;
+        
+        const rtlTrue = document.getElementById('rtl-true');
+        const rtlFalse = document.getElementById('rtl-false');
+        if (rtlTrue && rtlFalse) {
+            rtlTrue.checked = rtlDirection;
+            rtlFalse.checked = !rtlDirection;
+        }
+
+        const select = document.getElementById('chapter-select');
+        if (select) {
+            select.innerHTML = '';
+            data.chapters.forEach(ch => {
+                const opt = document.createElement('option');
+                opt.value = ch;
+                opt.textContent = `Chapter ${ch}`;
+                if (ch === data.active_chapter) opt.selected = true;
+                select.appendChild(opt);
+            });
+            activeChapter = data.active_chapter;
+        }
+    } catch (e) {
+        console.error('Failed to load chapter data:', e);
+    }
+}
+
+async function fetchPageData() {
+    try {
+        const res = await fetch(`/api/page-data?chapter=${activeChapter}`);
+        const data = await res.json();
+        pageList = data.pages || [];
+        boxesData = data.boxes.pages || data.boxes || {};
+        currentPageIndex = 0;
+        selectedBoxIndex = -1;
+        loadCurrentPage();
+    } catch (e) {
+        console.error('Failed to load page data:', e);
+    }
 }
 
 function loadCurrentPage() {
-    if (!pagesData || pagesData.length === 0) return;
-    let page = pagesData[currentPageIdx];
-    document.getElementById("page-indicator").textContent = `Page ${currentPageIdx + 1} / ${pagesData.length}`;
-
-    currentImage.src = `/image/download/${currentChapter}/${page.filename}`;
+    if (pageList.length === 0) return;
+    const pInfo = pageList[currentPageIndex];
+    document.getElementById('page-indicator').textContent = `Page ${currentPageIndex + 1} / ${pageList.length}`;
+    
+    imageLoaded = false;
+    currentImage = new Image();
+    currentImage.src = `/image/download/${activeChapter}/${pInfo.filename}`;
     currentImage.onload = () => {
         canvas.width = currentImage.width;
         canvas.height = currentImage.height;
-
-        let pagesMap = boxesData.pages || boxesData;
-        if (!pagesMap[page.stem]) {
-            pagesMap[page.stem] = [];
-        }
-        selectedBoxIdx = -1;
-        render();
-        updateLayers();
+        imageLoaded = true;
+        renderCanvas();
+        updateSidebar();
     };
 }
 
-function getBoxes() {
-    if (!pagesData[currentPageIdx]) return [];
-    let stem = pagesData[currentPageIdx].stem;
-    let pagesMap = boxesData.pages || boxesData;
-    return pagesMap[stem] || [];
+function getCurrentBoxes() {
+    if (pageList.length === 0) return [];
+    const stem = pageList[currentPageIndex].stem;
+    if (!boxesData[stem]) boxesData[stem] = [];
+    return boxesData[stem];
 }
 
-function render() {
+function renderCanvas() {
+    if (!imageLoaded) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(currentImage, 0, 0);
 
-    let boxes = getBoxes();
-    boxes.forEach((b, idx) => {
-        if (b.visible === false) return;
+    const boxes = getCurrentBoxes();
+    boxes.forEach((box, idx) => {
+        if (!box.visible) return;
 
-        let isSelected = idx === selectedBoxIdx;
-        ctx.lineWidth = isSelected ? 5 : 3;
-        ctx.strokeStyle = isSelected ? "#22c55e" : (b.locked ? "#f59e0b" : "#ef4444");
-        ctx.fillStyle = isSelected ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.1)";
+        const x1 = Math.min(box.x1, box.x2);
+        const y1 = Math.min(box.y1, box.y2);
+        const w = Math.abs(box.x2 - box.x1);
+        const h = Math.abs(box.y2 - box.y1);
 
-        let w = b.x2 - b.x1;
-        let h = b.y2 - b.y1;
-        ctx.fillRect(b.x1, b.y1, w, h);
-        ctx.strokeRect(b.x1, b.y1, w, h);
+        const isSelected = idx === selectedBoxIndex;
 
-        ctx.fillStyle = isSelected ? "#22c55e" : "#ef4444";
-        ctx.fillRect(b.x1, b.y1, 28, 28);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 16px sans-serif";
-        ctx.fillText(String(idx + 1), b.x1 + 8, b.y1 + 20);
+        // Box Fill & Stroke
+        ctx.fillStyle = isSelected ? 'rgba(34, 197, 94, 0.25)' : 'rgba(245, 158, 11, 0.18)';
+        ctx.strokeStyle = isSelected ? '#22c55e' : '#f59e0b';
+        ctx.lineWidth = isSelected ? 4 : 3;
 
-        if (isSelected && !b.locked) drawHandles(b);
+        ctx.fillRect(x1, y1, w, h);
+        ctx.strokeRect(x1, y1, w, h);
+
+        // Label Badge
+        ctx.fillStyle = isSelected ? '#22c55e' : '#f59e0b';
+        ctx.fillRect(x1, y1, Math.min(w, 40), 24);
+        ctx.fillStyle = '#000000';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.fillText(`${idx + 1}`, x1 + 8, y1 + 17);
+
+        // Render Handles if selected
+        if (isSelected && !box.locked) {
+            drawHandles(x1, y1, w, h);
+        }
     });
 }
 
-function drawHandles(b) {
-    ctx.fillStyle = "#ffffff";
-    ctx.strokeStyle = "#000000";
-    ctx.lineWidth = 1;
-    let handles = [
-        { x: b.x1, y: b.y1 }, { x: b.x2, y: b.y1 },
-        { x: b.x2, y: b.y2 }, { x: b.x1, y: b.y2 }
-    ];
-    handles.forEach(h => {
-        ctx.fillRect(h.x - HANDLE_SIZE / 2, h.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
-        ctx.strokeRect(h.x - HANDLE_SIZE / 2, h.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+function drawHandles(x, y, w, h) {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2;
+
+    const handles = getHandleCoords(x, y, w, h);
+    Object.values(handles).forEach(pt => {
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.ptY || pt.y, HANDLE_SIZE, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
     });
 }
 
-function updateLayers() {
-    renderLayerStack(getBoxes(), selectedBoxIdx, {
-        onSelect: (idx) => { selectedBoxIdx = idx; render(); updateLayers(); }
-    });
+function getHandleCoords(x, y, w, h) {
+    return {
+        nw: { x: x, y: y },
+        ne: { x: x + w, y: y },
+        se: { x: x + w, y: y + h },
+        sw: { x: x, y: y + h },
+    };
 }
 
-window.toggleLayerVisible = function(idx) {
-    let boxes = getBoxes();
-    if (boxes[idx]) {
-        boxes[idx].visible = boxes[idx].visible === false;
-        render();
-        updateLayers();
+function getCanvasMousePos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+        x: Math.round((e.clientX - rect.left) * scaleX),
+        y: Math.round((e.clientY - rect.top) * scaleY)
+    };
+}
+
+function deleteBoxAt(pos) {
+    const boxes = getCurrentBoxes();
+    for (let i = boxes.length - 1; i >= 0; i--) {
+        const b = boxes[i];
+        if (b.locked) continue;
+        const x1 = Math.min(b.x1, b.x2);
+        const x2 = Math.max(b.x1, b.x2);
+        const y1 = Math.min(b.y1, b.y2);
+        const y2 = Math.max(b.y1, b.y2);
+
+        if (pos.x >= x1 && pos.x <= x2 && pos.y >= y1 && pos.y <= y2) {
+            boxes.splice(i, 1);
+            selectedBoxIndex = -1;
+            showToast('Panel box deleted');
+            renderCanvas();
+            updateSidebar();
+            return true;
+        }
     }
-};
-
-window.toggleLayerLock = function(idx) {
-    let boxes = getBoxes();
-    if (boxes[idx]) {
-        boxes[idx].locked = !boxes[idx].locked;
-        render();
-        updateLayers();
-    }
-};
-
-window.deleteLayer = function(idx) {
-    let boxes = getBoxes();
-    boxes.splice(idx, 1);
-    selectedBoxIdx = -1;
-    render();
-    updateLayers();
-};
-
-function addFullPageBox() {
-    let boxes = getBoxes();
-    boxes.push({
-        x1: 0, y1: 0, x2: canvas.width, y2: canvas.height,
-        z_index: boxes.length, type: "rectangle", locked: false, visible: true, label: "Full Page"
-    });
-    selectedBoxIdx = boxes.length - 1;
-    render();
-    updateLayers();
+    return false;
 }
 
-function setupCanvasEvents() {
-    canvas.addEventListener("mousedown", (e) => {
-        let rect = canvas.getBoundingClientRect();
-        let scaleX = canvas.width / rect.width;
-        let scaleY = canvas.height / rect.height;
-        let x = (e.clientX - rect.left) * scaleX;
-        let y = (e.clientY - rect.top) * scaleY;
+function setupEventListeners() {
+    // Prevent default right-click context menu on canvas
+    canvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const pos = getCanvasMousePos(e);
+        deleteBoxAt(pos);
+    });
 
-        let boxes = getBoxes();
+    canvas.addEventListener('mousedown', (e) => {
+        if (e.button === 2) return; // Right click handled by contextmenu
+        const pos = getCanvasMousePos(e);
+        const boxes = getCurrentBoxes();
 
-        if (selectedBoxIdx >= 0 && !boxes[selectedBoxIdx].locked) {
-            let b = boxes[selectedBoxIdx];
-            let handles = [
-                { x: b.x1, y: b.y1 }, { x: b.x2, y: b.y1 },
-                { x: b.x2, y: b.y2 }, { x: b.x1, y: b.y2 }
-            ];
-            for (let i = 0; i < handles.length; i++) {
-                if (Math.abs(x - handles[i].x) <= HANDLE_SIZE * 1.5 && Math.abs(y - handles[i].y) <= HANDLE_SIZE * 1.5) {
-                    isResizing = true;
-                    resizeHandleIdx = i;
-                    return;
+        // Check handle click on selected box
+        if (selectedBoxIndex >= 0 && selectedBoxIndex < boxes.length) {
+            const b = boxes[selectedBoxIndex];
+            if (!b.locked) {
+                const x1 = Math.min(b.x1, b.x2);
+                const y1 = Math.min(b.y1, b.y2);
+                const w = Math.abs(b.x2 - b.x1);
+                const h = Math.abs(b.y2 - b.y1);
+                const handles = getHandleCoords(x1, y1, w, h);
+
+                for (const [key, pt] of Object.entries(handles)) {
+                    if (Math.hypot(pos.x - pt.x, pos.y - pt.y) <= HANDLE_SIZE * 1.5) {
+                        isResizing = true;
+                        resizeHandle = key;
+                        initialBoxCoords = { ...b };
+                        return;
+                    }
                 }
             }
         }
 
+        // Check box click
+        let clickedIdx = -1;
         for (let i = boxes.length - 1; i >= 0; i--) {
-            let b = boxes[i];
-            if (!b.locked && b.visible !== false && x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2) {
-                selectedBoxIdx = i;
+            const b = boxes[i];
+            const x1 = Math.min(b.x1, b.x2);
+            const x2 = Math.max(b.x1, b.x2);
+            const y1 = Math.min(b.y1, b.y2);
+            const y2 = Math.max(b.y1, b.y2);
+
+            if (pos.x >= x1 && pos.x <= x2 && pos.y >= y1 && pos.y <= y2) {
+                clickedIdx = i;
+                break;
+            }
+        }
+
+        if (clickedIdx >= 0) {
+            selectedBoxIndex = clickedIdx;
+            const b = boxes[selectedBoxIndex];
+            if (!b.locked) {
                 isDragging = true;
-                startX = x - b.x1;
-                startY = y - b.y1;
-                render();
-                updateLayers();
-                return;
+                dragStartX = pos.x;
+                dragStartY = pos.y;
+                initialBoxCoords = { ...b };
             }
-        }
-
-        isDrawing = true;
-        startX = x;
-        startY = y;
-        selectedBoxIdx = -1;
-    });
-
-    canvas.addEventListener("mousemove", (e) => {
-        let rect = canvas.getBoundingClientRect();
-        let scaleX = canvas.width / rect.width;
-        let scaleY = canvas.height / rect.height;
-        let x = (e.clientX - rect.left) * scaleX;
-        let y = (e.clientY - rect.top) * scaleY;
-
-        let boxes = getBoxes();
-
-        if (isDrawing) {
-            render();
-            ctx.strokeStyle = "#22c55e";
-            ctx.lineWidth = 2;
-            ctx.strokeRect(startX, startY, x - startX, y - startY);
-        } else if (isDragging && selectedBoxIdx >= 0) {
-            let b = boxes[selectedBoxIdx];
-            let w = b.x2 - b.x1;
-            let h = b.y2 - b.y1;
-            b.x1 = Math.max(0, Math.min(canvas.width - w, x - startX));
-            b.y1 = Math.max(0, Math.min(canvas.height - h, y - startY));
-            b.x2 = b.x1 + w;
-            b.y2 = b.y1 + h;
-            render();
-        } else if (isResizing && selectedBoxIdx >= 0) {
-            let b = boxes[selectedBoxIdx];
-            if (resizeHandleIdx === 0) { b.x1 = x; b.y1 = y; }
-            else if (resizeHandleIdx === 1) { b.x2 = x; b.y1 = y; }
-            else if (resizeHandleIdx === 2) { b.x2 = x; b.y2 = y; }
-            else if (resizeHandleIdx === 3) { b.x1 = x; b.y2 = y; }
-            render();
+            renderCanvas();
+            updateSidebar();
+        } else {
+            // Start drawing new box
+            selectedBoxIndex = -1;
+            isDrawing = true;
+            dragStartX = pos.x;
+            dragStartY = pos.y;
+            const newBox = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y, z_index: boxes.length, visible: true, locked: false, label: 'manual' };
+            boxes.push(newBox);
+            selectedBoxIndex = boxes.length - 1;
         }
     });
 
-    canvas.addEventListener("mouseup", (e) => {
-        if (isDrawing) {
-            let rect = canvas.getBoundingClientRect();
-            let scaleX = canvas.width / rect.width;
-            let scaleY = canvas.height / rect.height;
-            let x = (e.clientX - rect.left) * scaleX;
-            let y = (e.clientY - rect.top) * scaleY;
+    canvas.addEventListener('mousemove', (e) => {
+        const pos = getCanvasMousePos(e);
+        const boxes = getCurrentBoxes();
 
-            let x1 = Math.min(startX, x);
-            let y1 = Math.min(startY, y);
-            let x2 = Math.max(startX, x);
-            let y2 = Math.max(startY, y);
+        if (isDrawing && selectedBoxIndex >= 0) {
+            const b = boxes[selectedBoxIndex];
+            b.x2 = pos.x;
+            b.y2 = pos.y;
+            renderCanvas();
+        } else if (isDragging && selectedBoxIndex >= 0) {
+            const dx = pos.x - dragStartX;
+            const dy = pos.y - dragStartY;
+            const b = boxes[selectedBoxIndex];
+            b.x1 = initialBoxCoords.x1 + dx;
+            b.x2 = initialBoxCoords.x2 + dx;
+            b.y1 = initialBoxCoords.y1 + dy;
+            b.y2 = initialBoxCoords.y2 + dy;
+            renderCanvas();
+        } else if (isResizing && selectedBoxIndex >= 0) {
+            const b = boxes[selectedBoxIndex];
+            if (resizeHandle === 'nw') { b.x1 = pos.x; b.y1 = pos.y; }
+            if (resizeHandle === 'ne') { b.x2 = pos.x; b.y1 = pos.y; }
+            if (resizeHandle === 'se') { b.x2 = pos.x; b.y2 = pos.y; }
+            if (resizeHandle === 'sw') { b.x1 = pos.x; b.y2 = pos.y; }
+            renderCanvas();
+        }
+    });
 
-            if (x2 - x1 > 30 && y2 - y1 > 30) {
-                let boxes = getBoxes();
-                boxes.push({
-                    x1: Math.round(x1), y1: Math.round(y1), x2: Math.round(x2), y2: Math.round(y2),
-                    z_index: boxes.length, type: "rectangle", locked: false, visible: true, label: "User Box"
-                });
-                selectedBoxIdx = boxes.length - 1;
-                updateLayers();
+    window.addEventListener('mouseup', () => {
+        if (isDrawing || isDragging || isResizing) {
+            isDrawing = false;
+            isDragging = false;
+            isResizing = false;
+
+            // Fix inverted box coordinates
+            if (selectedBoxIndex >= 0) {
+                const boxes = getCurrentBoxes();
+                const b = boxes[selectedBoxIndex];
+                if (b) {
+                    const x1 = Math.min(b.x1, b.x2);
+                    const x2 = Math.max(b.x1, b.x2);
+                    const y1 = Math.min(b.y1, b.y2);
+                    const y2 = Math.max(b.y1, b.y2);
+                    
+                    // Filter out tiny accidental click boxes
+                    if (x2 - x1 < 20 || y2 - y1 < 20) {
+                        boxes.splice(selectedBoxIndex, 1);
+                        selectedBoxIndex = -1;
+                    } else {
+                        b.x1 = x1; b.x2 = x2; b.y1 = y1; b.y2 = y2;
+                    }
+                }
             }
+            renderCanvas();
+            updateSidebar();
         }
-
-        isDrawing = false;
-        isDragging = false;
-        isResizing = false;
-        render();
     });
-}
 
-function setupKeyEvents() {
-    window.addEventListener("keydown", (e) => {
-        if (e.key === "ArrowLeft" || e.key.toLowerCase() === "a") prevPage();
-        else if (e.key === "ArrowRight" || e.key.toLowerCase() === "d") nextPage();
-        else if (e.key.toLowerCase() === "f") addFullPageBox();
-        else if (e.key === "Delete" || e.key === "Backspace") {
-            if (selectedBoxIdx >= 0) window.deleteLayer(selectedBoxIdx);
+    // Keyboard Shortcuts
+    window.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+        // Key 'F': Clear All & Full-Page Box
+        if (e.key === 'f' || e.key === 'F') {
+            e.preventDefault();
+            addFullPageBox();
+            return;
         }
-        else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+
+        // Delete / Backspace: Remove selected box
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            if (selectedBoxIndex >= 0) {
+                e.preventDefault();
+                const boxes = getCurrentBoxes();
+                boxes.splice(selectedBoxIndex, 1);
+                selectedBoxIndex = -1;
+                renderCanvas();
+                updateSidebar();
+            }
+            return;
+        }
+
+        // Navigation
+        if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') prevPage();
+        if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') nextPage();
+
+        // Save
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
             e.preventDefault();
             saveAndRecrop();
         }
     });
 }
 
-function prevPage() { if (currentPageIdx > 0) { currentPageIdx--; loadCurrentPage(); } }
-function nextPage() { if (currentPageIdx < pagesData.length - 1) { currentPageIdx++; loadCurrentPage(); } }
-
-async function runRedetect() {
-    let page = pagesData[currentPageIdx];
-    let engine = document.getElementById("engine-select").value;
-
-    let res = await fetch("/api/redetect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chapter: currentChapter, filename: page.filename, engine: engine })
+function updateSidebar() {
+    renderLayerStack(getCurrentBoxes(), selectedBoxIndex, {
+        onSelect: (idx) => { selectedBoxIndex = idx; renderCanvas(); updateSidebar(); },
+        onToggleVisible: (idx) => { const b = getCurrentBoxes()[idx]; if (b) b.visible = !b.visible; renderCanvas(); updateSidebar(); },
+        onToggleLock: (idx) => { const b = getCurrentBoxes()[idx]; if (b) b.locked = !b.locked; renderCanvas(); updateSidebar(); },
+        onDelete: (idx) => { getCurrentBoxes().splice(idx, 1); selectedBoxIndex = -1; renderCanvas(); updateSidebar(); },
     });
-    let data = await res.json();
-    let pagesMap = boxesData.pages || boxesData;
-    pagesMap[page.stem] = data.boxes || [];
-    render();
-    updateLayers();
 }
 
-function updateRtl(val) { isRtl = val; }
-async function switchChapter(ch) { await loadChapter(ch); }
+/**
+ * Key 'F' Action: Clear all existing boxes on page and replace with single full-page box.
+ */
+function addFullPageBox() {
+    if (!imageLoaded) return;
+    const boxes = getCurrentBoxes();
+    boxes.length = 0; // Clear all existing boxes
+    boxes.push({
+        x1: 0,
+        y1: 0,
+        x2: currentImage.width,
+        y2: currentImage.height,
+        z_index: 0,
+        type: "rectangle",
+        locked: false,
+        visible: true,
+        label: "full_page"
+    });
+    selectedBoxIndex = 0;
+    showToast('Page set to single full-page panel');
+    renderCanvas();
+    updateSidebar();
+}
+
+function prevPage() {
+    if (currentPageIndex > 0) {
+        currentPageIndex--;
+        selectedBoxIndex = -1;
+        loadCurrentPage();
+    }
+}
+
+function nextPage() {
+    if (currentPageIndex < pageList.length - 1) {
+        currentPageIndex++;
+        selectedBoxIndex = -1;
+        loadCurrentPage();
+    }
+}
+
+async function switchChapter(ch) {
+    activeChapter = ch;
+    await fetchPageData();
+}
+
+async function updateRtl(val) {
+    rtlDirection = val;
+    try {
+        const boxes = getCurrentBoxes();
+        const res = await fetch('/api/sort-boxes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ boxes: boxes, rtl: rtlDirection })
+        });
+        const data = await res.json();
+        if (data.sorted_boxes) {
+            const stem = pageList[currentPageIndex].stem;
+            boxesData[stem] = data.sorted_boxes;
+            renderCanvas();
+            updateSidebar();
+        }
+    } catch (e) {
+        console.error('Failed to sort boxes:', e);
+    }
+}
+
+async function runRedetect() {
+    if (pageList.length === 0) return;
+    const engine = document.getElementById('engine-select').value;
+    const filename = pageList[currentPageIndex].filename;
+    
+    showToast(`Running ${engine.toUpperCase()} detection...`);
+    try {
+        const res = await fetch('/api/redetect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chapter: activeChapter, filename: filename, engine: engine })
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            const stem = pageList[currentPageIndex].stem;
+            boxesData[stem] = data.boxes || [];
+            selectedBoxIndex = -1;
+            showToast('Page re-detected!');
+            renderCanvas();
+            updateSidebar();
+        }
+    } catch (e) {
+        console.error('Re-detect failed:', e);
+    }
+}
 
 async function saveAndRecrop() {
-    let res = await fetch("/api/save-boxes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chapter: currentChapter, boxes: boxesData, rtl: isRtl })
-    });
-    if (res.ok) {
-        showToast("Saved & Re-Cropped Panels!");
+    try {
+        const res = await fetch('/api/save-boxes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chapter: activeChapter, boxes: { pages: boxesData }, rtl: rtlDirection })
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            showToast('Saved & Re-Cropped panels!');
+        }
+    } catch (e) {
+        console.error('Save failed:', e);
     }
 }
 
 async function finishAndContinue() {
     await saveAndRecrop();
-    showToast("Finishing Crop Phase & Resuming Pipeline...");
-    setTimeout(async () => {
-        await fetch("/api/shutdown", { method: "POST" });
-        window.close();
-    }, 1000);
+    try {
+        await fetch('/api/shutdown', { method: 'POST' });
+    } catch (e) {}
+    window.close();
 }
 
 function showToast(msg) {
-    let t = document.getElementById("toast");
-    t.textContent = msg;
-    t.style.opacity = "1";
-    setTimeout(() => { t.style.opacity = "0"; }, 2500);
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    setTimeout(() => { toast.style.opacity = '0'; }, 2200);
 }
 
-window.onload = init;
+document.addEventListener('DOMContentLoaded', initEditor);

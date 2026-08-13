@@ -29,9 +29,9 @@
         <div class="controls-group">
             <label for="engine-select">Detector:</label>
             <select id="engine-select">
-                <option value="heuristic">CV Heuristic (Fast)</option>
-                <option value="magi">MAGI v3 (AI)</option>
                 <option value="hybrid">Hybrid (AI + Snap)</option>
+                <option value="magi">MAGI v3 (AI)</option>
+                <option value="heuristic">CV Heuristic (Fast)</option>
             </select>
             <button onclick="runRedetect()">Re-Detect Page</button>
             <button class="btn-accent" onclick="saveAndRecrop()">Save & Re-Crop (Ctrl+S)</button>
@@ -48,8 +48,8 @@
             <div class="card">
                 <div class="card-title">Reading Direction</div>
                 <div style="display:flex; gap:15px;">
-                    <label><input type="radio" name="rtl" value="true" checked onchange="updateRtl(true)"> RTL (Manga)</label>
-                    <label><input type="radio" name="rtl" value="false" onchange="updateRtl(false)"> LTR (Webtoon)</label>
+                    <label><input type="radio" name="rtl" value="true" id="rtl-true" checked onchange="updateRtl(true)"> RTL (Manga)</label>
+                    <label><input type="radio" name="rtl" value="false" id="rtl-false" onchange="updateRtl(false)"> LTR (Webtoon)</label>
                 </div>
             </div>
 
@@ -64,10 +64,11 @@
             <div class="card">
                 <div class="card-title">Shortcuts</div>
                 <div class="hotkey-list">
+                    <p><kbd>Right-Click</kbd> : Delete Clicked Panel</p>
+                    <p><kbd>F</kbd> : Clear All & Full-Page Box</p>
                     <p><kbd>A</kbd> / <kbd>&larr;</kbd> : Previous Page</p>
                     <p><kbd>D</kbd> / <kbd>&rarr;</kbd> : Next Page</p>
-                    <p><kbd>F</kbd> : Full-Page Layer (0,0,W,H)</p>
-                    <p><kbd>Del</kbd> / <kbd>Backspace</kbd> : Delete Selected Layer</p>
+                    <p><kbd>Del</kbd> / <kbd>Backspace</kbd> : Delete Selected</p>
                     <p><kbd>Ctrl+S</kbd> : Save & Re-Crop</p>
                 </div>
             </div>
